@@ -20,13 +20,13 @@ A friendly, zero-dependency TypeScript library that orchestrates and centralizes
 ## Install
 
 ```bash
-npm install ai-lib
+npm install @pilmee/ai
 ```
 
 ## Quick start
 
 ```ts
-import { AIOrchestrator } from 'ai-lib';
+import { AIOrchestrator } from '@pilmee/ai';
 
 const ai = new AIOrchestrator({
   scope: {
@@ -124,7 +124,7 @@ Available both as standalone functions and as `AIOrchestrator` methods (which au
 `sharedContext` from your scope description):
 
 ```ts
-import { summarize, write, rewrite, translate, detectLanguage, proofread } from 'ai-lib';
+import { summarize, write, rewrite, translate, detectLanguage, proofread } from '@pilmee/ai';
 
 await summarize(longText, { type: 'key-points', length: 'short' });
 await write('a product announcement for our new lens', { tone: 'formal' });
@@ -139,7 +139,7 @@ await proofread(userComment);
 ### Tools (WebMCP)
 
 ```ts
-import { defineTool } from 'ai-lib';
+import { defineTool } from '@pilmee/ai';
 
 const getCartTotal = defineTool({
   name: 'getCartTotal',
