@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ai-lib basic example</title>
+    <meta name="description" content="A minimal example of the ai-lib chat orchestrator." />
+  </head>
+  <body>
+    <h1>ai-lib basic example</h1>
+    <p>Open with Chrome (Prompt API enabled) and check the console.</p>
+    <button id="ask" type="button">Ask</button>
+    <pre id="output"></pre>
+
+    <script type="module">
+      import { AIOrchestrator } from '../dist/index.js';
+
+      const output = document.getElementById('output');
+      const ai = new AIOrchestrator({
+        scope: { description: 'a demo page for the ai-lib library' },
+      });
+      ai.captureContextFromDocument();
+
+      document.getElementById('ask').addEventListener('click', async () => {
+        const availability = await ai.isAvailable();
+        if (!availability.supported) {
+          output.textContent = 'Chrome built-in AI is not supported in this browser.';
+          return;
+        }
+
+        const agent = await ai.createAgent({
+          onDownloadProgress: (progress) => {
+            output.textContent = `Downloading model: ${Math.round(progress.loaded * 100)}%`;
+          },
+        });
+
+        output.textContent = '';
+        for await (const delta of agent.stream('What is this page about?')) {
+          output.textContent += delta;
+        }
+        agent.destroy();
+      });
+    </script>
+  </body>
+</html>

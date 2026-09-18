@@ -1,15 +1,10 @@
 {
-  "extends": "super-configs/tsconfig/base",
-  "compilerOptions": {
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "rootDir": "src",
-    "outDir": "dist"
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules"]
+    "extends": "super-configs/tsconfig/base",
+    "compilerOptions": {
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "noEmit": true
+    },
+    "include": ["src/**/*.ts", "tests/**/*.ts", "*.config.ts", "ambient.d.ts"]
 }
