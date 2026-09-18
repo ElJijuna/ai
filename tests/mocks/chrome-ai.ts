@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import type {
   AIAvailability,
+  AIMessage,
   LanguageModelSession,
   LanguageModelStatic,
 } from '../../src/types/chrome-ai.js';
@@ -9,7 +10,9 @@ export function createMockLanguageModelSession(
   overrides: Partial<LanguageModelSession> = {},
 ): LanguageModelSession {
   const session: LanguageModelSession = {
-    prompt: vi.fn((input: string) => Promise.resolve(`reply to: ${input}`)),
+    prompt: vi.fn((input: string | AIMessage[]) =>
+      Promise.resolve(`reply to: ${typeof input === 'string' ? input : JSON.stringify(input)}`),
+    ),
     promptStreaming: vi.fn(() => {
       return new ReadableStream<string>({
         start(controller) {

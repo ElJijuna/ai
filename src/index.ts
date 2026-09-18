@@ -8,6 +8,7 @@ export type {
   TranslateOptions,
   WriteOptions,
 } from './actions/index.js';
+export { isTranslationAvailable } from './actions/index.js';
 export { checkAllAvailability, checkAvailability, isReady } from './availability.js';
 export type { ContextListener } from './context/WebContext.js';
 export { captureDocumentContext, WebContext } from './context/WebContext.js';
@@ -18,14 +19,21 @@ export { defineTool } from './tools/defineTool.js';
 export { exposeToolsToPage, isWebMCPAvailable } from './tools/webmcp.js';
 export type {
   AgentConfig,
+  AgentMessage,
   AIAvailabilityState,
   AIFeatureName,
+  AudioContentPart,
   AvailabilityInfo,
   DownloadProgress,
+  ImageContentPart,
+  MessageContentPart,
+  ModalityExpectation,
+  ModelParams,
   OrchestratorConfig,
   PageContext,
   ScopeConfig,
   ScopeMode,
   SendOptions,
+  TextContentPart,
   Tool,
 } from './types.js';

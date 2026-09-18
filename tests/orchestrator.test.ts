@@ -12,6 +12,26 @@ describe('AIOrchestrator.isAvailable', () => {
   });
 });
 
+describe('AIOrchestrator.getModelParams', () => {
+  it('resolves to null when LanguageModel is not supported', async () => {
+    const ai = new AIOrchestrator();
+
+    await expect(ai.getModelParams()).resolves.toBeNull();
+  });
+
+  it('delegates to LanguageModel.params() when supported', async () => {
+    installMockLanguageModel();
+    const ai = new AIOrchestrator();
+
+    await expect(ai.getModelParams()).resolves.toEqual({
+      defaultTopK: 3,
+      maxTopK: 8,
+      defaultTemperature: 1,
+      maxTemperature: 2,
+    });
+  });
+});
+
 describe('AIOrchestrator.createAgent', () => {
   it('merges the orchestrator scope, shared context, and registered tools into new agents', async () => {
     const { static: mock } = installMockLanguageModel();

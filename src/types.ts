@@ -61,6 +61,41 @@ export interface Tool<Args = unknown, Result = unknown> {
   execute: (args: Args) => Promise<Result> | Result;
 }
 
+export interface TextContentPart {
+  type: 'text';
+  value: string;
+}
+
+export interface ImageContentPart {
+  type: 'image';
+  value: ImageBitmapSource;
+}
+
+export interface AudioContentPart {
+  type: 'audio';
+  value: AudioBuffer | Blob | ArrayBuffer;
+}
+
+/** One part of a multimodal message sent to the Prompt API. */
+export type MessageContentPart = TextContentPart | ImageContentPart | AudioContentPart;
+
+/** What you pass to `Agent.send()`/`stream()`: plain text, or multimodal content parts. */
+export type AgentMessage = string | MessageContentPart[];
+
+/** A modality (and, for text, languages) an agent expects to send or receive. */
+export interface ModalityExpectation {
+  type: 'text' | 'image' | 'audio';
+  languages?: string[];
+}
+
+/** Valid `temperature`/`topK` ranges for the Prompt API on this device. */
+export interface ModelParams {
+  defaultTopK: number;
+  maxTopK: number;
+  defaultTemperature: number;
+  maxTemperature: number;
+}
+
 export interface SendOptions {
   signal?: AbortSignal;
   /** A JSON schema the model's reply must conform to (structured output). */
@@ -82,7 +117,13 @@ export interface AgentConfig {
   tools?: Tool[];
   temperature?: number;
   topK?: number;
+  /** Declare non-text modalities this agent will send, e.g. `[{ type: 'image' }]`. */
+  expectedInputs?: ModalityExpectation[];
+  /** Declare non-text modalities this agent expects back. */
+  expectedOutputs?: ModalityExpectation[];
   onDownloadProgress?: (progress: DownloadProgress) => void;
+  /** Called when Chrome starts dropping earlier turns because the context window is full. */
+  onQuotaOverflow?: () => void;
   /** Aborts session creation, including an in-flight model download. */
   signal?: AbortSignal;
 }

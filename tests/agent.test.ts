@@ -72,6 +72,66 @@ describe('Agent#send / stream', () => {
   });
 });
 
+describe('Agent#send with multimodal content', () => {
+  it('wraps content parts into a single user message', async () => {
+    const session = createMockLanguageModelSession();
+
+    installMockLanguageModel({ session });
+    const agent = await Agent.create();
+    const parts = [
+      { type: 'text' as const, value: 'Describe this photo' },
+      { type: 'image' as const, value: {} as ImageBitmapSource },
+    ];
+
+    await agent.send(parts);
+
+    expect(session.prompt).toHaveBeenCalledWith([{ role: 'user', content: parts }], {
+      signal: undefined,
+      responseConstraint: undefined,
+    });
+  });
+});
+
+describe('Agent#measureInputUsage', () => {
+  it('delegates to the session when supported', async () => {
+    const session = createMockLanguageModelSession({
+      measureInputUsage: vi.fn(() => Promise.resolve(42)),
+    });
+
+    installMockLanguageModel({ session });
+    const agent = await Agent.create();
+
+    await expect(agent.measureInputUsage('hello')).resolves.toBe(42);
+    expect(session.measureInputUsage).toHaveBeenCalledWith('hello');
+  });
+
+  it('resolves to undefined when the browser does not support it', async () => {
+    const session = createMockLanguageModelSession({ measureInputUsage: undefined });
+
+    installMockLanguageModel({ session });
+    const agent = await Agent.create();
+
+    await expect(agent.measureInputUsage('hello')).resolves.toBeUndefined();
+  });
+});
+
+describe('Agent quota overflow', () => {
+  it('registers onQuotaOverflow on creation and removes it on destroy', async () => {
+    const session = createMockLanguageModelSession();
+
+    installMockLanguageModel({ session });
+    const onQuotaOverflow = vi.fn();
+    const agent = await Agent.create({ onQuotaOverflow });
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- session.addEventListener is a vi.fn() mock, not a real bound method.
+    expect(session.addEventListener).toHaveBeenCalledWith('quotaoverflow', onQuotaOverflow);
+
+    agent.destroy();
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- same as above.
+    expect(session.removeEventListener).toHaveBeenCalledWith('quotaoverflow', onQuotaOverflow);
+  });
+});
+
 describe('Agent#updateContext', () => {
   it('flushes pending context via session.append() before the next send()', async () => {
     const session = createMockLanguageModelSession();

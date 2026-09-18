@@ -6,6 +6,7 @@ import type {
   AgentConfig,
   AIFeatureName,
   AvailabilityInfo,
+  ModelParams,
   OrchestratorConfig,
   PageContext,
   ScopeConfig,
@@ -55,6 +56,20 @@ export class AIOrchestrator {
   /** Checks whether a Chrome built-in AI feature is supported and ready. */
   isAvailable(feature: AIFeatureName = 'languageModel'): Promise<AvailabilityInfo> {
     return checkAvailability(feature);
+  }
+
+  /** Whether translating between two specific languages is supported and ready. */
+  isTranslationAvailable(options: actions.TranslateOptions): Promise<AvailabilityInfo> {
+    return actions.isTranslationAvailable(options);
+  }
+
+  /** Valid `temperature`/`topK` ranges for the Prompt API on this device, or `null` if unsupported. */
+  getModelParams(): Promise<ModelParams | null> {
+    if (typeof globalThis.LanguageModel === 'undefined') {
+      return Promise.resolve(null);
+    }
+
+    return globalThis.LanguageModel.params();
   }
 
   /** The context currently shared by this orchestrator and every agent it created. */
@@ -110,7 +125,10 @@ export class AIOrchestrator {
       tools: [...this.#tools.values(), ...(overrides.tools ?? [])],
       temperature: overrides.temperature,
       topK: overrides.topK,
+      expectedInputs: overrides.expectedInputs,
+      expectedOutputs: overrides.expectedOutputs,
       onDownloadProgress: overrides.onDownloadProgress ?? this.#onDownloadProgress,
+      onQuotaOverflow: overrides.onQuotaOverflow,
       signal: overrides.signal,
     });
 

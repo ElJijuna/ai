@@ -11,6 +11,8 @@
  * @internal
  */
 
+import type { MessageContentPart, ModalityExpectation, ModelParams } from '../types.js';
+
 export type AIAvailability = 'unavailable' | 'downloadable' | 'downloading' | 'available';
 
 export interface AIDownloadProgressEvent extends Event {
@@ -28,7 +30,7 @@ export type AIMessageRole = 'system' | 'user' | 'assistant';
 
 export interface AIMessage {
   role: AIMessageRole;
-  content: string;
+  content: string | MessageContentPart[];
 }
 
 export interface LanguageModelTool<Args = unknown, Result = unknown> {
@@ -38,18 +40,13 @@ export interface LanguageModelTool<Args = unknown, Result = unknown> {
   execute: (args: Args) => Promise<Result> | Result;
 }
 
-export interface LanguageModelExpectedIO {
-  type: 'text' | 'image' | 'audio';
-  languages?: string[];
-}
-
 export interface LanguageModelCreateOptions {
   initialPrompts?: AIMessage[];
   temperature?: number;
   topK?: number;
   tools?: LanguageModelTool[];
-  expectedInputs?: LanguageModelExpectedIO[];
-  expectedOutputs?: LanguageModelExpectedIO[];
+  expectedInputs?: ModalityExpectation[];
+  expectedOutputs?: ModalityExpectation[];
   signal?: AbortSignal;
   monitor?: (monitor: AICreateMonitor) => void;
 }
@@ -60,27 +57,26 @@ export interface LanguageModelPromptOptions {
 }
 
 export interface LanguageModelSession extends EventTarget {
-  prompt: (input: string, options?: LanguageModelPromptOptions) => Promise<string>;
-  promptStreaming: (input: string, options?: LanguageModelPromptOptions) => ReadableStream<string>;
+  prompt: (input: string | AIMessage[], options?: LanguageModelPromptOptions) => Promise<string>;
+  promptStreaming: (
+    input: string | AIMessage[],
+    options?: LanguageModelPromptOptions,
+  ) => ReadableStream<string>;
   append?: (messages: AIMessage[]) => Promise<void>;
   clone: (options?: { signal?: AbortSignal }) => Promise<LanguageModelSession>;
   destroy: () => void;
-  measureInputUsage?: (input: string, options?: LanguageModelPromptOptions) => Promise<number>;
+  measureInputUsage?: (
+    input: string | AIMessage[],
+    options?: LanguageModelPromptOptions,
+  ) => Promise<number>;
   readonly inputUsage?: number;
   readonly inputQuota?: number;
-}
-
-export interface LanguageModelParams {
-  defaultTopK: number;
-  maxTopK: number;
-  defaultTemperature: number;
-  maxTemperature: number;
 }
 
 export interface LanguageModelStatic {
   availability: (options?: Partial<LanguageModelCreateOptions>) => Promise<AIAvailability>;
   create: (options?: LanguageModelCreateOptions) => Promise<LanguageModelSession>;
-  params: () => Promise<LanguageModelParams | null>;
+  params: () => Promise<ModelParams | null>;
 }
 
 export interface SummarizerCreateOptions {

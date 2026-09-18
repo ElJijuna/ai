@@ -1,4 +1,4 @@
-# ai-lib
+# @pilmee/ai
 
 A friendly, zero-dependency TypeScript library that orchestrates and centralizes calls to
 **Chrome's built-in AI APIs** (Prompt API / `LanguageModel`, `Summarizer`, `Writer`, `Rewriter`,
@@ -268,6 +268,8 @@ const ai = new AIOrchestrator({
 });
 
 await ai.isAvailable('languageModel'); // -> { feature, state, supported }
+await ai.isTranslationAvailable({ from: 'en', to: 'es' }); // pair-specific, unlike isAvailable('translator')
+await ai.getModelParams(); // -> { defaultTopK, maxTopK, defaultTemperature, maxTemperature } | null
 
 ai.setContext({ title: 'Pricing' }); // replaces; pushed to every live agent
 ai.updateContext({ section: 'faq' }); // merges; pushed to every live agent
@@ -286,7 +288,10 @@ ai.destroyAgents(); // cleans up every agent this orchestrator created
 A single chat session (create via `AIOrchestrator.createAgent`, not directly).
 
 ```ts
-const agent = await ai.createAgent();
+const agent = await ai.createAgent({
+  temperature: 0.7,
+  onQuotaOverflow: () => console.warn('Older turns are being dropped to fit the context window'),
+});
 
 await agent.send('Hello!'); // -> string
 
@@ -297,16 +302,93 @@ for await (const delta of agent.stream('Tell me more.')) {
 agent.updateContext({ cartTotal: 42 }); // flushed into the session on the next send()/stream()
 agent.setContext({ cartTotal: 42 });
 
+await agent.measureInputUsage('a long message…'); // preview cost before sending; undefined if unsupported
 const branch = await agent.clone(); // independent branch sharing history so far
 agent.usage; // { inputUsage, inputQuota } when the browser reports it
 agent.destroy();
 ```
 
-`send`/`stream` accept `{ signal, responseConstraint, raw }`:
+`send`/`stream` accept a plain string, or multimodal content parts (see [Sending a photo or audio
+message](#sending-a-photo-or-audio-message) below) for a model created with matching
+`expectedInputs`.
+
+`send`/`stream` also accept `{ signal, responseConstraint, raw }`:
 
 - `signal` — an `AbortSignal` to cancel the call.
 - `responseConstraint` — a JSON schema the reply must conform to (structured output).
 - `raw` (stream only) — receive chunks exactly as Chrome emits them instead of normalized deltas.
+
+### Sending a photo or audio message
+
+A model created with `expectedInputs` can take multimodal content parts instead of plain text: an
+array of `{ type: 'text' | 'image' | 'audio', value }`. The `value` for `'image'` is anything
+`createImageBitmap()` accepts (a `File`, `Blob`, `ImageBitmap`, `<canvas>`, …); for `'audio'` it's
+an `AudioBuffer`, `Blob`, or `ArrayBuffer`.
+
+**A photo, from a file input:**
+
+```ts
+const ai = new AIOrchestrator({ scope: { site: 'shop.example.com' } });
+const fileInput = document.querySelector<HTMLInputElement>('#photo')!;
+
+fileInput.addEventListener('change', async () => {
+  const file = fileInput.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  const agent = await ai.createAgent({ expectedInputs: [{ type: 'image' }] });
+  const image = await createImageBitmap(file);
+
+  const reply = await agent.send([
+    { type: 'text', value: 'What is in this photo? Does it match a product we sell?' },
+    { type: 'image', value: image },
+  ]);
+
+  console.log(reply);
+  agent.destroy();
+});
+```
+
+**A voice note, recorded with `MediaRecorder`:**
+
+```ts
+const ai = new AIOrchestrator({ scope: { site: 'shop.example.com' } });
+
+async function transcribeAndSummarize(): Promise<string> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const recorder = new MediaRecorder(stream);
+  const chunks: BlobPart[] = [];
+
+  recorder.addEventListener('dataavailable', (event) => chunks.push(event.data));
+  recorder.start();
+
+  // Stop after 5s for this example; in a real UI, stop on a button click instead.
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  recorder.stop();
+
+  const audioBlob = await new Promise<Blob>((resolve) => {
+    recorder.addEventListener('stop', () => resolve(new Blob(chunks, { type: recorder.mimeType })));
+  });
+  for (const track of stream.getTracks()) {
+    track.stop();
+  }
+
+  const agent = await ai.createAgent({ expectedInputs: [{ type: 'audio' }] });
+  const reply = await agent.send([
+    { type: 'text', value: 'Transcribe this, then summarize it in one sentence.' },
+    { type: 'audio', value: audioBlob },
+  ]);
+
+  agent.destroy();
+  return reply;
+}
+```
+
+Declare `expectedInputs` on `createAgent()` for whichever modalities you intend to send — a session
+created without them can't accept that modality later, so you can't add `{ type: 'image' }` to an
+already-open text-only agent. See [Recommendations](#recommendations) for quota implications of
+sending media.
 
 ### Default actions
 
@@ -394,6 +476,10 @@ handles each concern internally:
   hold real memory.
 - Watch `agent.usage` (`inputUsage`/`inputQuota`) and keep context concise; large contexts cost
   latency and quota. Prefer a short, curated `PageContext` over dumping full page HTML/text.
+- Declare `expectedInputs`/`expectedOutputs` upfront when creating an agent that will send images
+  or audio — a session created without them can't accept that modality later. Images/audio consume
+  quota much faster than text, so check `measureInputUsage()` before sending large media if you're
+  close to the limit, and handle `onQuotaOverflow` instead of assuming every earlier turn survives.
 
 **Privacy & safety**
 

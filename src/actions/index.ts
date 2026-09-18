@@ -7,6 +7,6 @@ export { rewrite, rewriteStream } from './rewrite.js';
 export type { SummarizeOptions } from './summarize.js';
 export { summarize, summarizeStream } from './summarize.js';
 export type { TranslateOptions } from './translate.js';
-export { translate, translateStream } from './translate.js';
+export { isTranslationAvailable, translate, translateStream } from './translate.js';
 export type { WriteOptions } from './write.js';
 export { write, writeStream } from './write.js';

@@ -2,11 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>ai-lib basic example</title>
-    <meta name="description" content="A minimal example of the ai-lib chat orchestrator." />
+    <title>@pilmee/ai basic example</title>
+    <meta name="description" content="A minimal example of the @pilmee/ai chat orchestrator." />
   </head>
   <body>
-    <h1>ai-lib basic example</h1>
+    <h1>@pilmee/ai basic example</h1>
     <p>Open with Chrome (Prompt API enabled) and check the console.</p>
     <button id="ask" type="button">Ask</button>
     <pre id="output"></pre>
@@ -16,7 +16,7 @@
 
       const output = document.getElementById('output');
       const ai = new AIOrchestrator({
-        scope: { description: 'a demo page for the ai-lib library' },
+        scope: { description: 'a demo page for the @pilmee/ai library' },
       });
       ai.captureContextFromDocument();
 
