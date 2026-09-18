@@ -50,6 +50,196 @@ if (!availability.supported) {
 }
 ```
 
+## React example: gating a chat button on availability
+
+Check `isAvailable()` once and only render the chat entry point when the browser can actually
+run it. `supported` tells you whether the API exists at all; `state` tells you whether it's ready
+right now or still needs a download.
+
+```tsx
+import { useEffect, useState } from 'react';
+import { AIOrchestrator, type AvailabilityInfo } from '@pilmee/ai';
+
+const ai = new AIOrchestrator({
+  scope: { site: 'shop.example.com', description: 'an online camera shop' },
+});
+
+function useAIAvailability() {
+  const [availability, setAvailability] = useState<AvailabilityInfo | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    ai.isAvailable().then((info) => {
+      if (!cancelled) {
+        setAvailability(info);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return availability;
+}
+
+export function ChatButton({ onOpen }: { onOpen: () => void }) {
+  const availability = useAIAvailability();
+
+  // Still checking, or this browser doesn't expose the API at all: render nothing.
+  if (!availability?.supported) {
+    return null;
+  }
+
+  const isReady = availability.state === 'available';
+
+  return (
+    <button type="button" onClick={onOpen} disabled={!isReady}>
+      {isReady ? 'Chat with us' : 'Preparing on-device AI…'}
+    </button>
+  );
+}
+```
+
+`onOpen` is where you'd call `ai.createAgent()` and open your chat panel (see [Quick
+start](#quick-start) and [`Agent`](#agent) above) — keep that behind the click so the model
+download, if one is needed, starts from a real user gesture (see
+[Recommendations](#recommendations)).
+
+### Showing model download progress
+
+When `state` is `'downloadable'`, clicking the button starts the model download. Pass
+`onDownloadProgress` to `createAgent()` and show it instead of a static label — downloads can be
+hundreds of MB to a few GB, so users need to see it's actually moving:
+
+```tsx
+import { useState } from 'react';
+import { AIOrchestrator, type Agent, type DownloadProgress } from '@pilmee/ai';
+
+const ai = new AIOrchestrator({
+  scope: { site: 'shop.example.com', description: 'an online camera shop' },
+});
+
+export function ChatButton({ onOpen }: { onOpen: (agent: Agent) => void }) {
+  const availability = useAIAvailability();
+  const [agent, setAgent] = useState<Agent | null>(null);
+  const [progress, setProgress] = useState<DownloadProgress | null>(null);
+
+  if (!availability?.supported) {
+    return null;
+  }
+
+  async function handleClick() {
+    if (agent) {
+      onOpen(agent);
+      return;
+    }
+
+    setProgress({ feature: 'languageModel', loaded: 0 });
+    const created = await ai.createAgent({ onDownloadProgress: setProgress });
+    setProgress(null);
+    setAgent(created);
+    onOpen(created);
+  }
+
+  return (
+    <button type="button" onClick={handleClick} disabled={progress !== null}>
+      {progress ? `Downloading model… ${Math.round(progress.loaded * 100)}%` : 'Chat with us'}
+    </button>
+  );
+}
+```
+
+This reuses the `agent` once it's created instead of re-downloading on every click, and disables
+the button mid-download instead of just relabeling it, since a second click while `createAgent()`
+is already in flight would start a redundant download.
+
+### Updating context as microfrontends load (SPA routing)
+
+In a microfrontend SPA, each route lazy-loads its own bundle. The `AIOrchestrator` instance lives
+in the shell and stays alive across navigations, so every section just needs to layer its own
+context in when it mounts — any chat `Agent` that's already open picks up the change on its next
+`send()`/`stream()` call, since `updateContext()` broadcasts to every live agent.
+
+```tsx
+// ai.ts — one shared instance, created once by the shell
+import { AIOrchestrator } from '@pilmee/ai';
+
+export const ai = new AIOrchestrator({
+  scope: { site: 'shop.example.com', description: 'an online camera shop' },
+});
+```
+
+```tsx
+// useSectionContext.ts — called by whichever microfrontend is currently mounted
+import { useEffect } from 'react';
+import type { PageContext } from '@pilmee/ai';
+import { ai } from './ai';
+
+export function useSectionContext(context: PageContext) {
+  const key = JSON.stringify(context);
+
+  useEffect(() => {
+    ai.updateContext(context);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- context is compared via `key`
+  }, [key]);
+}
+```
+
+```tsx
+// App.tsx — the shell: routes to lazily-loaded microfrontends
+import { lazy, Suspense, useEffect } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import { ai } from './ai';
+
+const PricingSection = lazy(() => import('./sections/PricingSection'));
+const SupportSection = lazy(() => import('./sections/SupportSection'));
+
+function useResetContextOnNavigate() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    // Replace, not merge: drop whatever the previous section added before the next
+    // one (lazy-loaded, so this can take a moment) layers its own context back in.
+    ai.setContext({ url: pathname, title: document.title });
+  }, [pathname]);
+}
+
+export function App() {
+  useResetContextOnNavigate();
+
+  return (
+    <Suspense fallback={<Spinner />}>
+      <Routes>
+        <Route path="/pricing" element={<PricingSection />} />
+        <Route path="/support" element={<SupportSection />} />
+      </Routes>
+    </Suspense>
+  );
+}
+```
+
+```tsx
+// sections/PricingSection.tsx — its own bundle, fetched only when /pricing is visited
+import { useSectionContext } from '../useSectionContext';
+
+export default function PricingSection() {
+  useSectionContext({
+    section: 'pricing',
+    description: 'Pricing plans: Basic, Pro, and Enterprise, with a feature comparison table.',
+  });
+
+  return <div>{/* ... */}</div>;
+}
+```
+
+The reset-on-navigate step matters because `updateContext()` merges rather than replaces: without
+it, a key one section adds (e.g. `ticketId` from a support widget) would silently linger in the
+context after the user navigates to an unrelated section. Resetting to the shared base on every
+route change, then letting the newly-mounted section layer its own keys back in, keeps the context
+scoped to whatever is actually on screen.
+
 ## Scope: WebLLM, WebMCP, WebContext
 
 - **WebLLM** — `AIOrchestrator` / `Agent` wrap the Prompt API session lifecycle (create, prompt,
