@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@pilmee/ai shop demo</title>
+    <meta
+      name="description"
+      content="A fuller example: a simulated storefront with a floating chat widget, wired to @pilmee/ai. Navigating sections updates the agent's context live."
+    />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --border: #d9d9df;
+        --muted: #6b6b76;
+        --bg-card: #ffffff;
+        --bg-page: #f5f5f7;
+        --accent: #2f6fed;
+        --accent-fg: #ffffff;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --border: #3a3a42;
+          --muted: #9a9aa5;
+          --bg-card: #1c1c22;
+          --bg-page: #121216;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        background: var(--bg-page);
+        color: canvastext;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-card);
+      }
+
+      header h1 {
+        font-size: 1.1rem;
+        margin: 0;
+      }
+
+      #availability-badge {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      #availability-badge[data-state='available'] {
+        color: #1a7f37;
+        border-color: #1a7f37;
+      }
+
+      #availability-badge[data-state='downloadable'],
+      #availability-badge[data-state='downloading'] {
+        color: #9a6700;
+        border-color: #9a6700;
+      }
+
+      #availability-badge[data-state='unsupported'],
+      #availability-badge[data-state='unavailable'] {
+        color: #cf222e;
+        border-color: #cf222e;
+      }
+
+      main {
+        max-width: 720px;
+        margin: 1.5rem auto;
+        padding: 0 1.5rem 4rem;
+        display: grid;
+        gap: 1rem;
+      }
+
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      nav button {
+        border: 1px solid var(--border);
+        background: var(--bg-card);
+        color: inherit;
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+
+      nav button[aria-pressed='true'] {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-fg);
+      }
+
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.25rem;
+      }
+
+      .card h2 {
+        margin-top: 0;
+      }
+
+      .card p {
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      details.card summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      details.card pre {
+        margin: 0.75rem 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      button.link {
+        background: none;
+        border: none;
+        color: var(--accent);
+        cursor: pointer;
+        padding: 0;
+        font: inherit;
+        text-decoration: underline;
+      }
+
+      #chat-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        border: none;
+        border-radius: 999px;
+        background: var(--accent);
+        color: var(--accent-fg);
+        padding: 0.85rem 1.4rem;
+        font-size: 0.95rem;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+        cursor: pointer;
+      }
+
+      #chat-toggle:disabled {
+        opacity: 0.7;
+        cursor: wait;
+      }
+
+      #chat-panel {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 5.5rem;
+        width: min(360px, calc(100vw - 3rem));
+        max-height: min(520px, calc(100vh - 8rem));
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        overflow: hidden;
+      }
+
+      #chat-panel[hidden] {
+        display: none;
+      }
+
+      #chat-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border);
+      }
+
+      #chat-panel-header strong {
+        font-size: 0.9rem;
+      }
+
+      #chat-panel-header div {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      #chat-panel-header button {
+        border: none;
+        background: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+
+      #chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .chat-bubble {
+        max-width: 85%;
+        padding: 0.5rem 0.75rem;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .chat-bubble--user {
+        align-self: flex-end;
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
+
+      .chat-bubble--assistant {
+        align-self: flex-start;
+        background: var(--bg-page);
+        border: 1px solid var(--border);
+      }
+
+      .chat-bubble--status {
+        align-self: center;
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-style: italic;
+      }
+
+      #chat-form {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border-top: 1px solid var(--border);
+      }
+
+      #chat-input {
+        flex: 1;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.5rem 0.7rem;
+        background: var(--bg-page);
+        color: inherit;
+        font: inherit;
+      }
+
+      #chat-form button[type='submit'] {
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: var(--accent-fg);
+        padding: 0 1rem;
+        cursor: pointer;
+      }
+
+      #chat-form button[type='submit']:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Aperture &amp; Co. <small>(@pilmee/ai demo)</small></h1>
+      <span id="availability-badge" data-state="unknown">Chrome AI: checking…</span>
+    </header>
+
+    <main>
+      <nav id="section-nav" aria-label="Storefront sections">
+        <button type="button" data-section="home" aria-pressed="true">Home</button>
+        <button type="button" data-section="pricing" aria-pressed="false">Pricing</button>
+        <button type="button" data-section="support" aria-pressed="false">Support</button>
+        <button type="button" data-section="product" aria-pressed="false">Product</button>
+      </nav>
+
+      <section class="card">
+        <h2 id="main-heading">Welcome to Aperture &amp; Co.</h2>
+        <p id="main-body"></p>
+      </section>
+
+      <details class="card" open>
+        <summary>Context currently shared with the agent</summary>
+        <p style="margin: 0.5rem 0 0">
+          Clicking a section button above simulates SPA navigation: it replaces this context via
+          <code>ai.setContext()</code>, and any open chat picks it up on its next message.
+          <button class="link" id="capture-doc" type="button">Merge in this page's own metadata instead</button>.
+        </p>
+        <pre id="context-output"></pre>
+      </details>
+    </main>
+
+    <button id="chat-toggle" type="button">💬 Chat with us</button>
+
+    <div id="chat-panel" hidden>
+      <div id="chat-panel-header">
+        <strong>Ask Aperture &amp; Co.</strong>
+        <div>
+          <button id="chat-reset" type="button">Reset</button>
+          <button id="chat-close" type="button" aria-label="Close chat">✕</button>
+        </div>
+      </div>
+      <div id="chat-messages"></div>
+      <form id="chat-form">
+        <input id="chat-input" type="text" placeholder="Ask about the current section…" autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+
+    <script type="module">
+      import { AIOrchestrator } from '../dist/index.js';
+
+      const sections = {
+        home: {
+          heading: 'Welcome to Aperture & Co.',
+          body: "Discover our latest mirrorless cameras and lenses, with free shipping over $50.",
+          context: {
+            section: 'home',
+            description: "Homepage of an online camera shop, featuring today's deals and new arrivals.",
+          },
+        },
+        pricing: {
+          heading: 'Membership plans',
+          body:
+            'Basic ($9/mo): 10% off accessories. Pro ($29/mo): 20% off plus free shipping. ' +
+            'Enterprise: custom bulk pricing for studios.',
+          context: {
+            section: 'pricing',
+            description:
+              'Pricing plans: Basic ($9/mo), Pro ($29/mo), and Enterprise (custom), with a feature comparison table.',
+            plans: ['Basic — $9/mo', 'Pro — $29/mo', 'Enterprise — custom pricing'],
+          },
+        },
+        support: {
+          heading: 'Support center',
+          body: 'Track your order, start a return, or check warranty status. Current demo ticket: DEMO-1234.',
+          context: {
+            section: 'support',
+            description: 'Support center covering shipping status, returns, and warranty claims.',
+            ticketId: 'DEMO-1234',
+          },
+        },
+        product: {
+          heading: 'Aperture X100 — Mirrorless Camera',
+          body: '24MP full-frame sensor, in-body stabilization. $1,299. In stock: 12 units.',
+          context: {
+            section: 'product',
+            description: 'Product page for the Aperture X100 mirrorless camera.',
+            product: 'Aperture X100',
+            price: '$1,299',
+            stockUnits: 12,
+          },
+        },
+      };
+
+      const ai = new AIOrchestrator({
+        scope: {
+          site: 'aperture-demo.example',
+          description: 'Aperture & Co., an online camera shop',
+        },
+      });
+
+      const mainHeading = document.getElementById('main-heading');
+      const mainBody = document.getElementById('main-body');
+      const contextOutput = document.getElementById('context-output');
+      const navButtons = document.querySelectorAll('#section-nav button');
+      const availabilityBadge = document.getElementById('availability-badge');
+
+      function renderContext() {
+        contextOutput.textContent = JSON.stringify(ai.context, null, 2);
+      }
+
+      function goToSection(key) {
+        const section = sections[key];
+        mainHeading.textContent = section.heading;
+        mainBody.textContent = section.body;
+        // Replace, not merge: simulates a route change in an SPA, where the previous
+        // section's context (e.g. a support ticket id) shouldn't leak into the next one.
+        ai.setContext(section.context);
+        renderContext();
+
+        for (const button of navButtons) {
+          button.setAttribute('aria-pressed', String(button.dataset.section === key));
+        }
+      }
+
+      for (const button of navButtons) {
+        button.addEventListener('click', () => goToSection(button.dataset.section));
+      }
+
+      document.getElementById('capture-doc').addEventListener('click', () => {
+        ai.captureContextFromDocument();
+        renderContext();
+      });
+
+      goToSection('home');
+
+      function describeAvailability(info) {
+        switch (info.state) {
+          case 'available':
+            return 'Chrome AI: ready';
+          case 'downloadable':
+            return 'Chrome AI: ready to download';
+          case 'downloading':
+            return 'Chrome AI: downloading model…';
+          case 'unavailable':
+            return 'Chrome AI: unavailable on this device';
+          case 'unsupported':
+            return 'Chrome AI: not supported in this browser';
+          default:
+            return 'Chrome AI: checking…';
+        }
+      }
+
+      async function refreshAvailability() {
+        const info = await ai.isAvailable();
+        availabilityBadge.textContent = describeAvailability(info);
+        availabilityBadge.dataset.state = info.state;
+        return info;
+      }
+
+      refreshAvailability();
+
+      const chatToggle = document.getElementById('chat-toggle');
+      const chatPanel = document.getElementById('chat-panel');
+      const chatMessages = document.getElementById('chat-messages');
+      const chatForm = document.getElementById('chat-form');
+      const chatInput = document.getElementById('chat-input');
+      const chatClose = document.getElementById('chat-close');
+      const chatReset = document.getElementById('chat-reset');
+      const chatSubmit = chatForm.querySelector('button[type="submit"]');
+
+      let agent = null;
+      let agentPromise = null;
+      let sending = false;
+
+      function appendMessage(role, text) {
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble chat-bubble--${role}`;
+        bubble.textContent = text;
+        chatMessages.append(bubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return bubble;
+      }
+
+      // Memoized so a slow model download triggered by opening the chat panel
+      // and a fast follow-up message both await the same in-flight creation
+      // instead of starting two concurrent downloads.
+      function ensureAgent() {
+        if (agent) {
+          return Promise.resolve(agent);
+        }
+
+        if (agentPromise) {
+          return agentPromise;
+        }
+
+        chatToggle.disabled = true;
+        const placeholder = appendMessage('status', 'Starting model…');
+
+        agentPromise = ai
+          .createAgent({
+            onDownloadProgress: (progress) => {
+              placeholder.textContent = `Downloading model… ${Math.round(progress.loaded * 100)}%`;
+            },
+          })
+          .then((created) => {
+            agent = created;
+            placeholder.textContent = 'Model ready — ask away!';
+            return agent;
+          })
+          .catch((error) => {
+            placeholder.textContent = `Couldn't start the model: ${
+              error instanceof Error ? error.message : String(error)
+            }`;
+            throw error;
+          })
+          .finally(() => {
+            agentPromise = null;
+            chatToggle.disabled = false;
+          });
+
+        return agentPromise;
+      }
+
+      chatToggle.addEventListener('click', async () => {
+        const info = await refreshAvailability();
+
+        if (!info.supported) {
+          chatPanel.hidden = false;
+          appendMessage('status', 'Chrome built-in AI is not supported in this browser.');
+          return;
+        }
+
+        chatPanel.hidden = !chatPanel.hidden;
+
+        if (!chatPanel.hidden) {
+          chatInput.focus();
+          // Errors are already rendered as a status bubble by ensureAgent() itself.
+          await ensureAgent().catch(() => {});
+        }
+      });
+
+      chatClose.addEventListener('click', () => {
+        chatPanel.hidden = true;
+      });
+
+      chatReset.addEventListener('click', () => {
+        agent?.destroy();
+        agent = null;
+        agentPromise = null;
+        chatMessages.replaceChildren();
+        appendMessage('status', 'Conversation reset — the current section context still applies.');
+      });
+
+      chatForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const text = chatInput.value.trim();
+
+        if (!text || sending) {
+          return;
+        }
+
+        chatInput.value = '';
+        appendMessage('user', text);
+        sending = true;
+        chatSubmit.disabled = true;
+
+        try {
+          const activeAgent = await ensureAgent();
+          const replyBubble = appendMessage('assistant', '');
+
+          for await (const delta of activeAgent.stream(text)) {
+            replyBubble.textContent += delta;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          }
+        } catch (error) {
+          appendMessage('status', `Error: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          sending = false;
+          chatSubmit.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
