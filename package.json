@@ -1,6 +1,6 @@
 {
     "name": "@pilmee/ai",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "A friendly, zero-dependency TypeScript orchestrator for Chrome's built-in AI APIs (Prompt API, Summarizer, Writer, Rewriter, Translator, Language Detector, Proofreader) with site-scoped context and WebMCP tool support.",
     "type": "module",
     "main": "./dist/index.js",

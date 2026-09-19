@@ -1,3 +1,11 @@
+# [0.4.0](https://github.com/ElJijuna/ai/compare/v0.3.0...v0.4.0) (2026-09-19)
+
+
+### Features
+
+* Add web search tool for real-time queries with customizable search API integration ([15d7bca](https://github.com/ElJijuna/ai/commit/15d7bca46d664d64a74e0f8d3f52c93b255e0025))
+* update WebMCP integration to use document.modelContext ([6c5c2d0](https://github.com/ElJijuna/ai/commit/6c5c2d0875e73ff6f744a9b52598b0dc3b269f36))
+
 # [0.3.0](https://github.com/ElJijuna/ai/compare/v0.2.0...v0.3.0) (2026-09-19)
 
 
