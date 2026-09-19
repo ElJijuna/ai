@@ -531,6 +531,35 @@ Linting, formatting, and TypeDoc are configured via
 [`super-configs`](https://www.npmjs.com/package/super-configs) (`eslint.config.js`, `biome.json`,
 `typedoc.json`).
 
+## Releasing
+
+Versioning, `CHANGELOG.md`, npm publishing, and GitHub releases are all automated by
+[semantic-release](https://semantic-release.gitbook.io/) — see `.releaserc.json` and
+`.github/workflows/release.yml`.
+
+Every push to `main` that touches `src/`, `package.json`, or a few other release-relevant paths
+runs the release workflow, which:
+
+1. Installs, lints, type-checks, tests, and builds (`prepublishOnly` re-runs `npm run check` as a
+   final safety net before anything is published).
+2. Inspects the [Conventional Commits](https://www.conventionalcommits.org/) merged since the last
+   release to decide whether this is a `patch`/`minor`/`major` bump — a `fix:` commit bumps patch, a
+   `feat:` commit bumps minor, and a commit with a `BREAKING CHANGE:` footer bumps major. Commits
+   like `chore:`/`docs:`/`test:` don't trigger a release on their own.
+3. Publishes the new version to npm, prepends the release notes to `CHANGELOG.md`, tags the commit,
+   and opens a GitHub Release — all in one automated run.
+
+**One-time setup**: add an npm
+[automation token](https://docs.npmjs.com/creating-and-viewing-access-tokens) with publish access to
+`@pilmee/ai` as the `NPM_TOKEN` secret in this repo's GitHub Actions settings. `GITHUB_TOKEN` is
+provided automatically by Actions and needs no setup.
+
+To dry-run locally without publishing anything:
+
+```bash
+npx semantic-release --dry-run --no-ci
+```
+
 ## License
 
 MIT
