@@ -126,6 +126,41 @@
         line-height: 1.5;
       }
 
+      .section-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .section-header h2 {
+        margin: 0;
+      }
+
+      #translate-toggle {
+        flex-shrink: 0;
+        border: 1px solid var(--border);
+        background: var(--bg-page);
+        color: inherit;
+        padding: 0.4rem 0.8rem;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      #translate-toggle:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+
+      .translate-status {
+        margin: 0.5rem 0 0;
+        font-size: 0.8rem;
+        color: var(--muted);
+        font-style: italic;
+      }
+
       details.card summary {
         cursor: pointer;
         font-weight: 600;
@@ -315,8 +350,12 @@
       </nav>
 
       <section class="card">
-        <h2 id="main-heading">Welcome to Aperture &amp; Co.</h2>
+        <div class="section-header">
+          <h2 id="main-heading">Welcome to Aperture &amp; Co.</h2>
+          <button id="translate-toggle" type="button">🌐 Ver en español</button>
+        </div>
         <p id="main-body"></p>
+        <p id="translate-status" class="translate-status" hidden></p>
       </section>
 
       <details class="card" open>
@@ -405,15 +444,84 @@
       const contextOutput = document.getElementById('context-output');
       const navButtons = document.querySelectorAll('#section-nav button');
       const availabilityBadge = document.getElementById('availability-badge');
+      const translateToggle = document.getElementById('translate-toggle');
+      const translateStatus = document.getElementById('translate-status');
 
       function renderContext() {
         contextOutput.textContent = JSON.stringify(ai.context, null, 2);
       }
 
-      function goToSection(key) {
-        const section = sections[key];
+      let currentSectionKey = 'home';
+      let currentLang = 'en';
+      // Bumped on every navigation so a translation in flight for a section the user
+      // has since left doesn't land on top of the section they navigated to.
+      let sectionToken = 0;
+
+      function setTranslateStatus(text) {
+        translateStatus.textContent = text ?? '';
+        translateStatus.hidden = !text;
+      }
+
+      function showEnglish() {
+        const section = sections[currentSectionKey];
         mainHeading.textContent = section.heading;
         mainBody.textContent = section.body;
+      }
+
+      async function showSpanish(token) {
+        const section = sections[currentSectionKey];
+        const availability = await ai.isTranslationAvailable({ from: 'en', to: 'es' });
+
+        if (!availability.supported) {
+          setTranslateStatus("Chrome's Translator API isn't supported in this browser.");
+          return false;
+        }
+
+        setTranslateStatus('Translating… (first time may need to download a language pack)');
+
+        try {
+          const [heading, body] = await Promise.all([
+            ai.translate(section.heading, {
+              from: 'en',
+              to: 'es',
+              onDownloadProgress: (progress) => {
+                setTranslateStatus(`Downloading Spanish language pack… ${Math.round(progress.loaded * 100)}%`);
+              },
+            }),
+            ai.translate(section.body, { from: 'en', to: 'es' }),
+          ]);
+
+          if (token !== sectionToken) {
+            return true; // The user navigated elsewhere while this was in flight.
+          }
+
+          mainHeading.textContent = heading;
+          mainBody.textContent = body;
+          setTranslateStatus('');
+          return true;
+        } catch (error) {
+          if (token === sectionToken) {
+            setTranslateStatus(`Couldn't translate: ${error instanceof Error ? error.message : String(error)}`);
+          }
+          return false;
+        }
+      }
+
+      async function applyCurrentLanguage(token) {
+        if (currentLang === 'es') {
+          await showSpanish(token);
+        } else {
+          showEnglish();
+          setTranslateStatus('');
+        }
+      }
+
+      function goToSection(key) {
+        currentSectionKey = key;
+        sectionToken += 1;
+        const token = sectionToken;
+        const section = sections[key];
+
         // Replace, not merge: simulates a route change in an SPA, where the previous
         // section's context (e.g. a support ticket id) shouldn't leak into the next one.
         ai.setContext(section.context);
@@ -422,6 +530,8 @@
         for (const button of navButtons) {
           button.setAttribute('aria-pressed', String(button.dataset.section === key));
         }
+
+        applyCurrentLanguage(token);
       }
 
       for (const button of navButtons) {
@@ -431,6 +541,26 @@
       document.getElementById('capture-doc').addEventListener('click', () => {
         ai.captureContextFromDocument();
         renderContext();
+      });
+
+      translateToggle.addEventListener('click', async () => {
+        translateToggle.disabled = true;
+
+        if (currentLang === 'en') {
+          const ok = await showSpanish(sectionToken);
+
+          if (ok) {
+            currentLang = 'es';
+            translateToggle.textContent = '🌐 Ver en inglés';
+          }
+        } else {
+          currentLang = 'en';
+          showEnglish();
+          setTranslateStatus('');
+          translateToggle.textContent = '🌐 Ver en español';
+        }
+
+        translateToggle.disabled = false;
       });
 
       goToSection('home');

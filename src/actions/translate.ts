@@ -1,5 +1,6 @@
 import { AIFeatureNotSupportedError } from '../errors.js';
-import type { AvailabilityInfo } from '../types.js';
+import type { AvailabilityInfo, DownloadProgress } from '../types.js';
+import { createDownloadMonitor } from '../utils/download.js';
 import { normalizeTextStream } from '../utils/stream.js';
 
 export interface TranslateOptions {
@@ -8,6 +9,7 @@ export interface TranslateOptions {
   /** BCP 47 target language tag, e.g. `'es'`. */
   to: string;
   signal?: AbortSignal;
+  onDownloadProgress?: (progress: DownloadProgress) => void;
 }
 
 /**
@@ -44,6 +46,7 @@ export async function translate(text: string, options: TranslateOptions): Promis
     sourceLanguage: options.from,
     targetLanguage: options.to,
     signal: options.signal,
+    monitor: createDownloadMonitor('translator', options.onDownloadProgress),
   });
 
   try {
@@ -66,6 +69,7 @@ export async function* translateStream(
     sourceLanguage: options.from,
     targetLanguage: options.to,
     signal: options.signal,
+    monitor: createDownloadMonitor('translator', options.onDownloadProgress),
   });
 
   try {

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { isTranslationAvailable } from '../src/actions/translate.js';
-import type { AIAvailability } from '../src/types/chrome-ai.js';
+import { isTranslationAvailable, translate } from '../src/actions/translate.js';
+import type {
+  AIAvailability,
+  AIDownloadProgressEvent,
+  TranslatorCreateOptions,
+} from '../src/types/chrome-ai.js';
 
 describe('isTranslationAvailable', () => {
   it('reports unsupported when the browser has no Translator', async () => {
@@ -31,5 +35,32 @@ describe('isTranslationAvailable', () => {
     const info = await isTranslationAvailable({ from: 'xx', to: 'yy' });
 
     expect(info).toEqual({ feature: 'translator', state: 'unknown', supported: true });
+  });
+});
+
+describe('translate', () => {
+  it('reports download progress through onDownloadProgress', async () => {
+    globalThis.Translator = {
+      availability: vi.fn(),
+      create: vi.fn((options: TranslatorCreateOptions) => {
+        options.monitor?.({
+          addEventListener: (_type, listener) => {
+            listener({ loaded: 0.5 } as AIDownloadProgressEvent);
+          },
+        });
+
+        return Promise.resolve({
+          translate: vi.fn(() => Promise.resolve('Hola')),
+          translateStreaming: vi.fn(),
+          destroy: vi.fn(),
+        });
+      }),
+    };
+
+    const onDownloadProgress = vi.fn();
+    const result = await translate('Hello', { from: 'en', to: 'es', onDownloadProgress });
+
+    expect(result).toBe('Hola');
+    expect(onDownloadProgress).toHaveBeenCalledWith({ feature: 'translator', loaded: 0.5 });
   });
 });
