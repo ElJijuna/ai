@@ -132,7 +132,7 @@ export interface OrchestratorConfig {
   scope?: ScopeConfig;
   context?: PageContext;
   tools?: Tool[];
-  /** Also register tools on `navigator.modelContext` (WebMCP) when the page exposes it. */
+  /** Also register tools on `document.modelContext` (WebMCP; falls back to `navigator.modelContext` on older Chrome builds) when the page exposes it. */
   exposeToolsToPage?: boolean;
   onDownloadProgress?: (progress: DownloadProgress) => void;
 }

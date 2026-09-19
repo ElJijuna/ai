@@ -1,11 +1,47 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AIFeatureNotSupportedError } from '../src/errors.js';
+import { AIFeatureNotSupportedError, AIFeatureUnavailableError } from '../src/errors.js';
 import { Agent } from '../src/orchestrator/Agent.js';
 import { createMockLanguageModelSession, installMockLanguageModel } from './mocks/chrome-ai.js';
 
 describe('Agent.create', () => {
   it('throws AIFeatureNotSupportedError when the browser has no LanguageModel', async () => {
     await expect(Agent.create()).rejects.toThrow(AIFeatureNotSupportedError);
+  });
+
+  it('sends an empty initialPrompts array when there is no system prompt to seed', async () => {
+    const { static: mock } = installMockLanguageModel();
+
+    await Agent.create({ scope: { mode: 'off' } });
+
+    const [[options]] = vi.mocked(mock.create).mock.calls;
+
+    expect(options?.initialPrompts).toEqual([]);
+  });
+
+  it('wraps a create() rejection in AIFeatureUnavailableError, including the cause message', async () => {
+    const { static: mock } = installMockLanguageModel();
+
+    vi.mocked(mock.create).mockRejectedValueOnce(new Error('no compatible GPU'));
+
+    await expect(Agent.create()).rejects.toThrow(AIFeatureUnavailableError);
+  });
+
+  it('includes the cause message when the rejection is an Error', async () => {
+    const { static: mock } = installMockLanguageModel();
+
+    vi.mocked(mock.create).mockRejectedValueOnce(new Error('no compatible GPU'));
+
+    await expect(Agent.create()).rejects.toThrow(
+      '"languageModel" is unavailable: no compatible GPU',
+    );
+  });
+
+  it('wraps a non-Error create() rejection without a reason suffix', async () => {
+    const { static: mock } = installMockLanguageModel();
+
+    vi.mocked(mock.create).mockRejectedValueOnce('no compatible GPU');
+
+    await expect(Agent.create()).rejects.toThrow('"languageModel" is unavailable.');
   });
 
   it('seeds the session with a system prompt built from scope, instructions, and context', async () => {
@@ -162,6 +198,77 @@ describe('Agent#updateContext', () => {
     await agent.send('two');
 
     expect(session.append).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Agent#clone', () => {
+  it('clones the underlying session, shares context, and forwards the quotaoverflow listener', async () => {
+    const clonedSession = createMockLanguageModelSession();
+    const session = createMockLanguageModelSession({
+      clone: vi.fn(() => Promise.resolve(clonedSession)),
+    });
+
+    installMockLanguageModel({ session });
+    const onQuotaOverflow = vi.fn();
+    const agent = await Agent.create({ context: { title: 'Home' }, onQuotaOverflow });
+    const cloneOptions = { signal: new AbortController().signal };
+    const branch = await agent.clone(cloneOptions);
+
+    expect(session.clone).toHaveBeenCalledWith(cloneOptions);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- clonedSession.addEventListener is a vi.fn() mock, not a real bound method.
+    expect(clonedSession.addEventListener).toHaveBeenCalledWith('quotaoverflow', onQuotaOverflow);
+    expect(branch.context).toEqual({ title: 'Home' });
+  });
+
+  it('does not register a quotaoverflow listener on the clone when none was set', async () => {
+    const clonedSession = createMockLanguageModelSession();
+    const session = createMockLanguageModelSession({
+      clone: vi.fn(() => Promise.resolve(clonedSession)),
+    });
+
+    installMockLanguageModel({ session });
+    const agent = await Agent.create();
+
+    await agent.clone();
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- same as above.
+    expect(clonedSession.addEventListener).not.toHaveBeenCalled();
+  });
+});
+
+describe('Agent#usage', () => {
+  it('reports the underlying session inputUsage/inputQuota', async () => {
+    const session = createMockLanguageModelSession({ inputUsage: 128, inputQuota: 1024 });
+
+    installMockLanguageModel({ session });
+    const agent = await Agent.create();
+
+    expect(agent.usage).toEqual({ inputUsage: 128, inputQuota: 1024 });
+  });
+});
+
+describe('Agent context flushing edge cases', () => {
+  it('skips append() when the pending context has no printable content', async () => {
+    const session = createMockLanguageModelSession();
+
+    installMockLanguageModel({ session });
+    const agent = await Agent.create();
+
+    agent.updateContext({});
+    await agent.send('hello');
+
+    expect(session.append).not.toHaveBeenCalled();
+  });
+
+  it('skips append() when the session does not support it', async () => {
+    const session = createMockLanguageModelSession({ append: undefined });
+
+    installMockLanguageModel({ session });
+    const agent = await Agent.create();
+
+    agent.updateContext({ title: 'Pricing' });
+
+    await expect(agent.send('hello')).resolves.toBe('reply to: hello');
   });
 });
 

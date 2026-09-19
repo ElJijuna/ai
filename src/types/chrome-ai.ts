@@ -1,7 +1,8 @@
 /**
  * Structural mirrors of Chrome's built-in AI APIs (Prompt API, Summarizer, Writer,
  * Rewriter, Translator, Language Detector, Proofreader) and the emerging WebMCP
- * `navigator.modelContext` surface.
+ * `document.modelContext` surface (`navigator.modelContext` on older builds; see
+ * {@link ModelContextRegistry}).
  *
  * These browser APIs are experimental, ship behind flags / origin trials, and their
  * shapes may drift as the specs stabilize. This module is intentionally not part of
@@ -218,7 +219,7 @@ export interface ProofreaderStatic {
   create: (options?: ProofreaderCreateOptions) => Promise<ProofreaderSession>;
 }
 
-/** A tool exposed through the experimental WebMCP `navigator.modelContext` registry. */
+/** A tool exposed through the experimental WebMCP `document.modelContext` registry. */
 export interface WebMCPTool<Args = unknown, Result = unknown> {
   name: string;
   description: string;

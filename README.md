@@ -11,7 +11,7 @@ A friendly, zero-dependency TypeScript library that orchestrates and centralizes
 - **Chat orchestration** — `send()` and `stream()` for the Prompt API.
 - **Default actions** — one-liners for summarize/write/rewrite/translate/detect-language/proofread.
 - **WebMCP-ready tools** — define tools once; they're passed to the model's function calling and,
-  when the browser supports it, also exposed on `navigator.modelContext` (WebMCP).
+  when the browser supports it, also exposed on `document.modelContext` (WebMCP).
 
 > These browser APIs are experimental (Chrome, behind flags/origin trials). This library
 > feature-detects everything and never assumes an API is present — see
@@ -247,8 +247,9 @@ scoped to whatever is actually on screen.
   LanguageDetector, Proofreader) as [default actions](#default-actions).
 - **WebMCP** — `defineTool()` + `registerTool()`/`registerTools()` build a central tool registry.
   Tools are passed into the Prompt API's function calling for every agent, and — when the browser
-  exposes `navigator.modelContext` — the same tools are registered there too, so the browser's own
-  page-level AI agent can discover and call them ([`exposeToolsToPage`](#src/tools/webmcp.ts)).
+  exposes `document.modelContext` (or `navigator.modelContext` on older Chrome builds, from before
+  the spec's 2026-07-21 draft moved it) — the same tools are registered there too, so the browser's
+  own page-level AI agent can discover and call them ([`exposeToolsToPage`](#src/tools/webmcp.ts)).
 - **WebContext** — `WebContext` (used internally by both `AIOrchestrator` and `Agent`) holds
   structured page/app context, serializes it into the system prompt, and notifies live agents when
   it changes.
@@ -264,7 +265,7 @@ const ai = new AIOrchestrator({
   scope: { mode: 'guided', site: 'example.com', description: '...' },
   context: { title: 'Home' },
   tools: [myTool],
-  exposeToolsToPage: true, // also register tools on navigator.modelContext when present
+  exposeToolsToPage: true, // also register tools on document.modelContext when present
 });
 
 await ai.isAvailable('languageModel'); // -> { feature, state, supported }

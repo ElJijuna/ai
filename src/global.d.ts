@@ -28,7 +28,13 @@ declare global {
 
   var Proofreader: ProofreaderStatic | undefined;
 
+  interface Document {
+    /** Current WebMCP location per the 2026-07-21 spec draft; Chrome 150+ deprecates `Navigator.modelContext`. */
+    modelContext?: ModelContextRegistry;
+  }
+
   interface Navigator {
+    /** @deprecated Superseded by `Document.modelContext`; kept as a fallback for pre-Chrome-150 builds. */
     modelContext?: ModelContextRegistry;
   }
 }

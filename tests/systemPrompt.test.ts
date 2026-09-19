@@ -40,6 +40,20 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Please ask about our products instead.');
   });
 
+  it('falls back to location.hostname when no site is given', () => {
+    const prompt = buildSystemPrompt({ scope: {} });
+
+    expect(prompt).toContain(`You are the assistant for "${location.hostname}"`);
+  });
+
+  it('inlines the scope description right after the site name', () => {
+    const prompt = buildSystemPrompt({
+      scope: { site: 'example.com', description: 'an online camera shop' },
+    });
+
+    expect(prompt).toContain('You are the assistant for "example.com". an online camera shop');
+  });
+
   it('appends custom instructions and context after the scope guard', () => {
     const prompt = buildSystemPrompt({
       scope: { site: 'example.com' },

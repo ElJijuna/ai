@@ -20,4 +20,10 @@ afterEach(() => {
   if (nav) {
     delete nav.modelContext;
   }
+
+  const doc = globalThis.document as { modelContext?: unknown } | undefined;
+
+  if (doc) {
+    delete doc.modelContext;
+  }
 });

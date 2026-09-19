@@ -8,7 +8,19 @@ export type {
   TranslateOptions,
   WriteOptions,
 } from './actions/index.js';
-export { isTranslationAvailable } from './actions/index.js';
+export {
+  detectLanguage,
+  isTranslationAvailable,
+  proofread,
+  rewrite,
+  rewriteStream,
+  summarize,
+  summarizeStream,
+  translate,
+  translateStream,
+  write,
+  writeStream,
+} from './actions/index.js';
 export { checkAllAvailability, checkAvailability, isReady } from './availability.js';
 export type { ContextListener } from './context/WebContext.js';
 export { captureDocumentContext, WebContext } from './context/WebContext.js';
