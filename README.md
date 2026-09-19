@@ -549,10 +549,26 @@ runs the release workflow, which:
 3. Publishes the new version to npm, prepends the release notes to `CHANGELOG.md`, tags the commit,
    and opens a GitHub Release — all in one automated run.
 
-**One-time setup**: add an npm
-[automation token](https://docs.npmjs.com/creating-and-viewing-access-tokens) with publish access to
-`@pilmee/ai` as the `NPM_TOKEN` secret in this repo's GitHub Actions settings. `GITHUB_TOKEN` is
-provided automatically by Actions and needs no setup.
+**One-time setup**, npm authentication — pick one:
+
+- **[Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (recommended)**: on the
+  `@pilmee/ai` package page on npmjs.com, add a trusted publisher pointing at this repo
+  (`ElJijuna/ai`) and workflow file (`.github/workflows/release.yml`). No secret to create or
+  rotate — npm exchanges the workflow's OIDC token for a short-lived publish token automatically
+  (the `id-token: write` permission in the workflow is already set up for this), and provenance
+  attestations come for free.
+- **Fallback (any other CI, or until Trusted Publishing is set up)**: add an npm
+  [automation token](https://docs.npmjs.com/creating-and-viewing-access-tokens) with publish access
+  to `@pilmee/ai` as the `NPM_TOKEN` secret in this repo's GitHub Actions settings. The workflow
+  tries Trusted Publishing first and only falls back to this token if that isn't configured.
+
+`GITHUB_TOKEN` (used by `@semantic-release/github` to tag releases) is provided automatically by
+Actions and needs no setup.
+
+> Don't add `registry-url` to the `actions/setup-node` step in this workflow. It makes setup-node
+> write its own `.npmrc` with an auth line, which conflicts with how `@semantic-release/npm` manages
+> npm authentication itself and surfaces as `EINVALIDNPMTOKEN` even with a valid `NPM_TOKEN` set —
+> the same failure mode we'd previously hit in other packages before tracing it back to this option.
 
 To dry-run locally without publishing anything:
 
