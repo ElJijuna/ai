@@ -248,6 +248,24 @@
         color: var(--muted);
         font-size: 0.8rem;
         font-style: italic;
+        width: 85%;
+      }
+
+      .chat-progress {
+        margin-top: 0.4rem;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--border);
+        overflow: hidden;
+      }
+
+      .chat-progress-fill {
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+        /* Chrome's downloadprogress event fires in a handful of large jumps rather than
+           a smooth stream, so animate width changes to make each jump read as motion. */
+        transition: width 500ms ease;
       }
 
       #chat-form {
@@ -465,6 +483,36 @@
         return bubble;
       }
 
+      // A status bubble with a bar underneath, so a jump in `progress.loaded` (Chrome
+      // reports download progress in a handful of large steps, not a smooth stream)
+      // reads as an animated transition instead of an instant, easy-to-miss text swap.
+      function appendDownloadStatus(text) {
+        const bubble = document.createElement('div');
+        bubble.className = 'chat-bubble chat-bubble--status';
+
+        const label = document.createElement('div');
+        label.textContent = text;
+
+        const track = document.createElement('div');
+        track.className = 'chat-progress';
+        const fill = document.createElement('div');
+        fill.className = 'chat-progress-fill';
+        track.append(fill);
+        bubble.append(label, track);
+
+        chatMessages.append(bubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        return {
+          setLabel(value) {
+            label.textContent = value;
+          },
+          setProgress(fraction) {
+            fill.style.width = `${Math.round(fraction * 100)}%`;
+          },
+        };
+      }
+
       // Memoized so a slow model download triggered by opening the chat panel
       // and a fast follow-up message both await the same in-flight creation
       // instead of starting two concurrent downloads.
@@ -478,23 +526,23 @@
         }
 
         chatToggle.disabled = true;
-        const placeholder = appendMessage('status', 'Starting model…');
+        const status = appendDownloadStatus('Starting model…');
 
         agentPromise = ai
           .createAgent({
             onDownloadProgress: (progress) => {
-              placeholder.textContent = `Downloading model… ${Math.round(progress.loaded * 100)}%`;
+              status.setLabel(`Downloading model… ${Math.round(progress.loaded * 100)}%`);
+              status.setProgress(progress.loaded);
             },
           })
           .then((created) => {
             agent = created;
-            placeholder.textContent = 'Model ready — ask away!';
+            status.setProgress(1);
+            status.setLabel('Model ready — ask away!');
             return agent;
           })
           .catch((error) => {
-            placeholder.textContent = `Couldn't start the model: ${
-              error instanceof Error ? error.message : String(error)
-            }`;
+            status.setLabel(`Couldn't start the model: ${error instanceof Error ? error.message : String(error)}`);
             throw error;
           })
           .finally(() => {
