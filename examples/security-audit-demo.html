@@ -1,0 +1,1224 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@pilmee/ai — panel de vulnerabilidades</title>
+    <meta
+      name="description"
+      content="Demo: panel de seguridad ficticio (auditoría de dependencias + Google Artifact Registry) con un asistente de chat en español impulsado por @pilmee/ai."
+    />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --border: #d9d9df;
+        --muted: #6b6b76;
+        --bg-card: #ffffff;
+        --bg-page: #f5f5f7;
+        --accent: #0f766e;
+        --accent-fg: #ffffff;
+        --critical: #7f1d1d;
+        --high: #c2410c;
+        --medium: #a16207;
+        --low: #475569;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --border: #3a3a42;
+          --muted: #9a9aa5;
+          --bg-card: #1c1c22;
+          --bg-page: #121216;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        background: var(--bg-page);
+        color: canvastext;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-card);
+      }
+
+      header h1 {
+        font-size: 1.1rem;
+        margin: 0;
+      }
+
+      #availability-badge {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      #availability-badge[data-state='available'] {
+        color: #1a7f37;
+        border-color: #1a7f37;
+      }
+
+      #availability-badge[data-state='downloadable'],
+      #availability-badge[data-state='downloading'] {
+        color: #9a6700;
+        border-color: #9a6700;
+      }
+
+      #availability-badge[data-state='unsupported'],
+      #availability-badge[data-state='unavailable'] {
+        color: #cf222e;
+        border-color: #cf222e;
+      }
+
+      main {
+        max-width: 760px;
+        margin: 1.5rem auto;
+        padding: 0 1.5rem 4rem;
+        display: grid;
+        gap: 1rem;
+      }
+
+      #disclaimer {
+        font-size: 0.85rem;
+        color: var(--muted);
+        background: var(--bg-card);
+        border: 1px dashed var(--border);
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+      }
+
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.25rem;
+      }
+
+      #summary-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .summary-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+
+      nav#tab-nav {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      nav#tab-nav button {
+        border: 1px solid var(--border);
+        background: var(--bg-card);
+        color: inherit;
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+
+      nav#tab-nav button[aria-pressed='true'] {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-fg);
+      }
+
+      .tab-panel {
+        display: grid;
+        gap: 0.85rem;
+      }
+
+      .tab-subtitle {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .severity-badge {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        color: #fff;
+        white-space: nowrap;
+      }
+
+      .severity-badge[data-severity='critical'] {
+        background: var(--critical);
+      }
+
+      .severity-badge[data-severity='high'] {
+        background: var(--high);
+      }
+
+      .severity-badge[data-severity='medium'] {
+        background: var(--medium);
+        color: #1c1c22;
+      }
+
+      .severity-badge[data-severity='low'] {
+        background: var(--low);
+      }
+
+      .vuln-card {
+        border-left-width: 4px;
+        border-left-style: solid;
+        border-left-color: var(--border);
+      }
+
+      .vuln-card[data-severity='critical'] {
+        border-left-color: var(--critical);
+      }
+
+      .vuln-card[data-severity='high'] {
+        border-left-color: var(--high);
+      }
+
+      .vuln-card[data-severity='medium'] {
+        border-left-color: var(--medium);
+      }
+
+      .vuln-card[data-severity='low'] {
+        border-left-color: var(--low);
+      }
+
+      .vuln-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .vuln-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.8rem;
+        color: var(--accent);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .vuln-code:hover {
+        text-decoration: underline;
+      }
+
+      .vuln-card h3 {
+        margin: 0 0 0.6rem;
+        font-size: 1rem;
+      }
+
+      .vuln-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.5rem 1rem;
+        margin: 0 0 0.75rem;
+        font-size: 0.8rem;
+      }
+
+      .vuln-meta div {
+        display: grid;
+        gap: 0.1rem;
+      }
+
+      .vuln-meta dt {
+        color: var(--muted);
+      }
+
+      .vuln-meta dd {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        word-break: break-word;
+      }
+
+      .vuln-description {
+        margin: 0 0 0.9rem;
+        line-height: 1.5;
+        font-size: 0.9rem;
+      }
+
+      .vuln-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      .vuln-actions button {
+        border: 1px solid var(--border);
+        background: var(--bg-page);
+        color: inherit;
+        padding: 0.4rem 0.8rem;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        cursor: pointer;
+      }
+
+      .vuln-actions button.analyze-btn {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .vuln-actions button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+
+      #chat-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        border: none;
+        border-radius: 999px;
+        background: var(--accent);
+        color: var(--accent-fg);
+        padding: 0.85rem 1.4rem;
+        font-size: 0.95rem;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+        cursor: pointer;
+      }
+
+      #chat-toggle:disabled {
+        opacity: 0.7;
+        cursor: wait;
+      }
+
+      #chat-panel {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 5.5rem;
+        width: min(380px, calc(100vw - 3rem));
+        max-height: min(560px, calc(100vh - 8rem));
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        overflow: hidden;
+      }
+
+      #chat-panel[hidden] {
+        display: none;
+      }
+
+      #chat-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border);
+      }
+
+      #chat-panel-header strong {
+        font-size: 0.9rem;
+      }
+
+      #chat-panel-header div {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      #chat-panel-header button {
+        border: none;
+        background: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+
+      #chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .chat-bubble {
+        max-width: 88%;
+        padding: 0.5rem 0.75rem;
+        border-radius: 10px;
+        font-size: 0.87rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .chat-bubble--user {
+        align-self: flex-end;
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
+
+      .chat-bubble--assistant {
+        align-self: flex-start;
+        background: var(--bg-page);
+        border: 1px solid var(--border);
+      }
+
+      .chat-bubble--thinking {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .thinking-dots {
+        display: inline-flex;
+        gap: 0.22rem;
+      }
+
+      .thinking-dots span {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--muted);
+        animation: thinking-bounce 1.1s infinite ease-in-out both;
+      }
+
+      .thinking-dots span:nth-child(1) {
+        animation-delay: -0.24s;
+      }
+
+      .thinking-dots span:nth-child(2) {
+        animation-delay: -0.12s;
+      }
+
+      @keyframes thinking-bounce {
+        0%,
+        80%,
+        100% {
+          transform: scale(0.6);
+          opacity: 0.4;
+        }
+
+        40% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      .chat-bubble--status {
+        align-self: center;
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-style: italic;
+        width: 88%;
+      }
+
+      .chat-progress {
+        margin-top: 0.4rem;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--border);
+        overflow: hidden;
+      }
+
+      .chat-progress-fill {
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+        transition: width 500ms ease;
+      }
+
+      #chat-form {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border-top: 1px solid var(--border);
+      }
+
+      #chat-input {
+        flex: 1;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.5rem 0.7rem;
+        background: var(--bg-page);
+        color: inherit;
+        font: inherit;
+      }
+
+      #chat-form button[type='submit'] {
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: var(--accent-fg);
+        padding: 0 1rem;
+        cursor: pointer;
+      }
+
+      #chat-form button[type='submit']:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🔒 Panel de vulnerabilidades <small>(demo @pilmee/ai)</small></h1>
+      <span id="availability-badge" data-state="unknown">Chrome AI: comprobando…</span>
+    </header>
+
+    <main>
+      <p id="disclaimer">
+        ⚠️ Datos ficticios con fines demostrativos: los componentes, versiones y códigos CVE/GHSA de
+        esta página no corresponden a vulnerabilidades reales.
+      </p>
+
+      <div id="summary-bar" class="card"></div>
+
+      <nav id="tab-nav" aria-label="Origen de las vulnerabilidades">
+        <button type="button" data-tab="audit" aria-pressed="true">Auditoría (npm audit)</button>
+        <button type="button" data-tab="gar" aria-pressed="false">GAR (Artifact Registry)</button>
+      </nav>
+
+      <section id="audit-panel" class="tab-panel">
+        <p class="tab-subtitle">
+          Hallazgos de una auditoría de dependencias (estilo <code>npm audit</code>) sobre
+          componentes de ejemplo.
+        </p>
+        <div id="audit-list"></div>
+      </section>
+
+      <section id="gar-panel" class="tab-panel" hidden>
+        <p class="tab-subtitle">
+          Hallazgos de un escaneo de imágenes de contenedor en Google Artifact Registry (GAR).
+          Las descripciones llegan en inglés desde el escáner: usa "Traducir" para verlas en
+          español.
+        </p>
+        <div id="gar-list"></div>
+      </section>
+    </main>
+
+    <button id="chat-toggle" type="button">💬 Preguntar al asistente</button>
+
+    <div id="chat-panel" hidden>
+      <div id="chat-panel-header">
+        <strong>Asistente de seguridad</strong>
+        <div>
+          <button id="chat-reset" type="button">Reiniciar</button>
+          <button id="chat-close" type="button" aria-label="Cerrar chat">✕</button>
+        </div>
+      </div>
+      <div id="chat-messages"></div>
+      <form id="chat-form">
+        <input
+          id="chat-input"
+          type="text"
+          placeholder="Pregunta por una vulnerabilidad o un código…"
+          autocomplete="off"
+        />
+        <button type="submit">Enviar</button>
+      </form>
+    </div>
+
+    <script type="module">
+      import { AIOrchestrator, defineTool } from '../dist/index.js';
+
+      // --- Datos ficticios ------------------------------------------------
+      // Auditoría de dependencias: ya redactada en español, como si el equipo
+      // hubiera anotado cada hallazgo localmente.
+      const auditVulnerabilities = [
+        {
+          id: 'GHSA-9x2q-mf3c-8k1p',
+          source: 'audit',
+          package: 'orbit-payment-sdk',
+          version: '2.3.1',
+          severity: 'critical',
+          title: 'Inyección SQL en el validador de cupones',
+          description:
+            'El validador de cupones de orbit-payment-sdk concatena directamente el código del ' +
+            'cupón en una consulta SQL sin parametrizar, permitiendo inyectar sentencias SQL ' +
+            'arbitrarias a través del campo "couponCode" y potencialmente leer o modificar datos ' +
+            'de otros comercios.',
+          vulnerableRange: '<2.4.0',
+          fixedVersion: '2.4.0',
+        },
+        {
+          id: 'CVE-2024-99981',
+          source: 'audit',
+          package: 'north-auth-sdk',
+          version: '1.8.0',
+          severity: 'high',
+          title: 'Verificación insegura de JWT (alg=none)',
+          description:
+            'north-auth-sdk acepta tokens JWT firmados con el algoritmo "none", lo que permite ' +
+            'falsificar tokens de sesión válidos sin conocer la clave secreta del servidor.',
+          vulnerableRange: '<1.9.2',
+          fixedVersion: '1.9.2',
+        },
+        {
+          id: 'GHSA-4h7w-22vt-qc9r',
+          source: 'audit',
+          package: 'swift-cache-client',
+          version: '0.5.4',
+          severity: 'medium',
+          title: 'Contaminación de prototipos al fusionar opciones',
+          description:
+            'La función mergeOptions() de swift-cache-client fusiona objetos de entrada del ' +
+            'usuario sin filtrar la clave "__proto__", permitiendo modificar el prototipo global ' +
+            'de Object y provocar denegación de servicio o escalado de privilegios en el proceso ' +
+            'Node.js.',
+          vulnerableRange: '<0.6.0',
+          fixedVersion: '0.6.0',
+        },
+        {
+          id: 'CVE-2024-99982',
+          source: 'audit',
+          package: 'acme-image-resizer',
+          version: '3.1.0',
+          severity: 'high',
+          title: 'Recorrido de directorios al procesar nombres de archivo',
+          description:
+            'acme-image-resizer no normaliza rutas relativas ("../") en el parámetro "filename", ' +
+            'permitiendo leer archivos arbitrarios del sistema de archivos del servidor durante el ' +
+            'redimensionado de imágenes.',
+          vulnerableRange: '<3.2.3',
+          fixedVersion: '3.2.3',
+        },
+        {
+          id: 'GHSA-p3z8-77qk-2x4m',
+          source: 'audit',
+          package: 'lumen-logger',
+          version: '1.2.0',
+          severity: 'low',
+          title: 'Registro de credenciales en texto plano en modo debug',
+          description:
+            'En modo "debug", lumen-logger registra las cabeceras HTTP completas —incluyendo el ' +
+            'header Authorization— sin enmascarar, exponiendo tokens de sesión en logs ' +
+            'compartidos.',
+          vulnerableRange: '<1.3.1',
+          fixedVersion: '1.3.1',
+        },
+      ];
+
+      // GAR (Google Artifact Registry): descripciones en inglés, como las
+      // entregaría un escáner real de imágenes de contenedor.
+      const garVulnerabilities = [
+        {
+          id: 'CVE-2023-88171',
+          source: 'gar',
+          resource: 'us-central1-docker.pkg.dev/demo-project/backend/orbit-gateway:1.4.2',
+          package: 'openssl',
+          version: '1.1.1k',
+          severity: 'critical',
+          title: 'Heap buffer overflow in X.509 certificate parsing',
+          description:
+            'A heap-based buffer overflow was found in the X.509 certificate parsing routine of ' +
+            'OpenSSL. A remote attacker could exploit this by supplying a specially crafted ' +
+            'certificate during the TLS handshake, potentially leading to a crash or arbitrary ' +
+            'code execution.',
+          vulnerableRange: '<1.1.1w',
+          fixedVersion: '1.1.1w',
+        },
+        {
+          id: 'CVE-2023-88172',
+          source: 'gar',
+          resource: 'us-central1-docker.pkg.dev/demo-project/backend/orbit-gateway:1.4.2',
+          package: 'zlib',
+          version: '1.2.11',
+          severity: 'high',
+          title: 'Memory corruption via crafted deflate stream',
+          description:
+            'zlib before 1.2.13 allows attackers to cause a denial of service (application crash) ' +
+            'or possibly have unspecified other impact via a large gzip header extra field, due to ' +
+            'inflate.c not properly bounds-checking the extra field buffer.',
+          vulnerableRange: '<1.2.13',
+          fixedVersion: '1.2.13',
+        },
+        {
+          id: 'CVE-2023-88173',
+          source: 'gar',
+          resource: 'us-central1-docker.pkg.dev/demo-project/data/orbit-etl-worker:0.9.0',
+          package: 'curl',
+          version: '7.74.0',
+          severity: 'medium',
+          title: 'Cookie injection via IDN hostname mismatch',
+          description:
+            'When curl is told to use an internationalized domain name (IDN) in a URL, it may set ' +
+            'the wrong cookie domain due to a mismatch between the punycode-converted and the ' +
+            'original hostname, allowing a malicious server to set cookies for an unrelated ' +
+            'domain.',
+          vulnerableRange: '<8.4.0',
+          fixedVersion: '8.4.0',
+        },
+        {
+          id: 'CVE-2023-88174',
+          source: 'gar',
+          resource: 'us-central1-docker.pkg.dev/demo-project/backend/orbit-gateway:1.4.2',
+          package: 'busybox',
+          version: '1.33.1',
+          severity: 'high',
+          title: 'Use-after-free in the awk applet',
+          description:
+            'A use-after-free vulnerability was discovered in the awk applet of BusyBox. A ' +
+            'specially crafted awk pattern can trigger the flaw, potentially resulting in a ' +
+            'denial of service or, combined with other weaknesses, arbitrary code execution ' +
+            'inside the container.',
+          vulnerableRange: '<1.36.1',
+          fixedVersion: '1.36.1',
+        },
+        {
+          id: 'CVE-2023-88175',
+          source: 'gar',
+          resource: 'us-central1-docker.pkg.dev/demo-project/data/orbit-etl-worker:0.9.0',
+          package: 'libxml2',
+          version: '2.9.10',
+          severity: 'low',
+          title: 'NULL pointer dereference when parsing malformed XML',
+          description:
+            'libxml2 is vulnerable to a NULL pointer dereference when parsing a specially crafted ' +
+            'XML document with an incomplete xmlns declaration, which can lead to a denial of ' +
+            'service of the parsing process.',
+          vulnerableRange: '<2.11.5',
+          fixedVersion: '2.11.5',
+        },
+      ];
+
+      const allVulnerabilities = [...auditVulnerabilities, ...garVulnerabilities];
+
+      // --- Helpers ----------------------------------------------------------
+      function escapeHtml(value) {
+        return String(value).replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        );
+      }
+
+      function severityLabel(severity) {
+        return (
+          { critical: 'CRÍTICA', high: 'ALTA', medium: 'MEDIA', low: 'BAJA' }[severity] ??
+          severity.toUpperCase()
+        );
+      }
+
+      // Well-known, deterministic advisory-database URL schemes (NVD / GitHub
+      // Advisory Database) -- not a guess, just how those two ID formats are
+      // always addressed. Falls back to a search link for anything else.
+      function vulnerabilityLink(id) {
+        if (id.startsWith('CVE-')) {
+          return `https://nvd.nist.gov/vuln/detail/${id}`;
+        }
+        if (id.startsWith('GHSA-')) {
+          return `https://github.com/advisories/${id}`;
+        }
+        return `https://www.google.com/search?q=${encodeURIComponent(id)}`;
+      }
+
+      function findVulnerability(id) {
+        return allVulnerabilities.find((v) => v.id === id);
+      }
+
+      // --- Renderizado del listado -------------------------------------------
+      function renderVulnCard(v) {
+        const translateButton =
+          v.source === 'gar'
+            ? `<button type="button" class="translate-btn" data-state="en">🌐 Traducir al español</button>`
+            : '';
+        const resourceRow = v.resource
+          ? `<div><dt>Imagen</dt><dd>${escapeHtml(v.resource)}</dd></div>`
+          : '';
+
+        return `
+          <article class="card vuln-card" data-id="${escapeHtml(v.id)}" data-severity="${v.severity}">
+            <div class="vuln-header">
+              <span class="severity-badge" data-severity="${v.severity}">${severityLabel(v.severity)}</span>
+              <a class="vuln-code" href="${vulnerabilityLink(v.id)}" target="_blank" rel="noopener noreferrer">${escapeHtml(v.id)} ↗</a>
+            </div>
+            <h3 class="vuln-title">${escapeHtml(v.title)}</h3>
+            <dl class="vuln-meta">
+              <div><dt>Paquete</dt><dd>${escapeHtml(v.package)}@${escapeHtml(v.version)}</dd></div>
+              ${resourceRow}
+              <div><dt>Versión vulnerable</dt><dd>${escapeHtml(v.vulnerableRange)}</dd></div>
+              <div><dt>Corrige en</dt><dd>${escapeHtml(v.fixedVersion)}</dd></div>
+            </dl>
+            <p class="vuln-description">${escapeHtml(v.description)}</p>
+            <div class="vuln-actions">
+              ${translateButton}
+              <button type="button" class="analyze-btn">🤖 Analizar con IA</button>
+            </div>
+          </article>`;
+      }
+
+      document.getElementById('audit-list').innerHTML = auditVulnerabilities
+        .map(renderVulnCard)
+        .join('');
+      document.getElementById('gar-list').innerHTML = garVulnerabilities
+        .map(renderVulnCard)
+        .join('');
+
+      function renderSummary() {
+        const bySeverity = { critical: 0, high: 0, medium: 0, low: 0 };
+        for (const v of allVulnerabilities) {
+          bySeverity[v.severity] += 1;
+        }
+
+        document.getElementById('summary-bar').innerHTML = `
+          <strong>${allVulnerabilities.length} vulnerabilidades detectadas</strong>
+          <div class="summary-chips">
+            <span class="severity-badge" data-severity="critical">${bySeverity.critical} crítica(s)</span>
+            <span class="severity-badge" data-severity="high">${bySeverity.high} alta(s)</span>
+            <span class="severity-badge" data-severity="medium">${bySeverity.medium} media(s)</span>
+            <span class="severity-badge" data-severity="low">${bySeverity.low} baja(s)</span>
+          </div>`;
+      }
+
+      renderSummary();
+
+      // --- Pestañas -----------------------------------------------------
+      const tabPanels = {
+        audit: document.getElementById('audit-panel'),
+        gar: document.getElementById('gar-panel'),
+      };
+
+      for (const button of document.querySelectorAll('#tab-nav button')) {
+        button.addEventListener('click', () => {
+          for (const btn of document.querySelectorAll('#tab-nav button')) {
+            btn.setAttribute('aria-pressed', String(btn === button));
+          }
+          for (const [key, panel] of Object.entries(tabPanels)) {
+            panel.hidden = key !== button.dataset.tab;
+          }
+        });
+      }
+
+      // --- @pilmee/ai: orquestador, contexto y herramientas -----------------
+      const ai = new AIOrchestrator({
+        scope: {
+          site: 'panel-vulnerabilidades.demo',
+          description:
+            'Un panel de seguridad ficticio con hallazgos de una auditoría de dependencias ' +
+            '(npm audit) y de un escaneo de imágenes de contenedor en Google Artifact Registry ' +
+            '(GAR), sobre componentes de ejemplo.',
+        },
+      });
+
+      ai.setContext({
+        panel: 'Panel de vulnerabilidades',
+        totalHallazgos: allVulnerabilities.length,
+        auditoria: auditVulnerabilities.length,
+        gar: garVulnerabilities.length,
+      });
+
+      // El modelo en el dispositivo no "sabe" nada de estos datos ficticios,
+      // así que se los damos como herramientas en vez de volcarlos enteros en
+      // el contexto (más barato en tokens y siempre exacto).
+      const getVulnerabilityDetailsTool = defineTool({
+        name: 'getVulnerabilityDetails',
+        description:
+          'Devuelve los detalles completos de una vulnerabilidad (auditoría npm o GAR) dado su ' +
+          'código (por ejemplo "GHSA-9x2q-mf3c-8k1p" o "CVE-2024-99981"). Úsala siempre que el ' +
+          'usuario mencione un código concreto o pida más detalles de un hallazgo ya listado.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: {
+              type: 'string',
+              description: 'El identificador de la vulnerabilidad (CVE-... o GHSA-...).',
+            },
+          },
+          required: ['code'],
+        },
+        execute({ code }) {
+          const found = allVulnerabilities.find(
+            (v) => v.id.toLowerCase() === String(code).toLowerCase(),
+          );
+
+          if (!found) {
+            return { error: `No se encontró la vulnerabilidad "${code}" en el panel actual.` };
+          }
+
+          return found;
+        },
+      });
+
+      const listVulnerabilitiesTool = defineTool({
+        name: 'listVulnerabilities',
+        description:
+          'Lista las vulnerabilidades del panel, opcionalmente filtradas por origen ' +
+          '("audit" o "gar") y/o severidad ("critical", "high", "medium", "low"). Úsala para ' +
+          'preguntas generales como "¿cuáles son críticas?" o "¿qué hay en GAR?".',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', enum: ['audit', 'gar', 'all'] },
+            severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'all'] },
+          },
+        },
+        execute({ source = 'all', severity = 'all' }) {
+          return allVulnerabilities
+            .filter((v) => source === 'all' || v.source === source)
+            .filter((v) => severity === 'all' || v.severity === severity)
+            .map(({ id, source: src, package: pkg, severity: sev, title }) => ({
+              id,
+              source: src,
+              package: pkg,
+              severity: sev,
+              title,
+            }));
+        },
+      });
+
+      ai.registerTool(getVulnerabilityDetailsTool);
+      ai.registerTool(listVulnerabilitiesTool);
+
+      const SECURITY_INSTRUCTIONS =
+        'Responde siempre en español, con un tono claro y directo, como lo haría un ingeniero ' +
+        'de seguridad de aplicaciones. Cuando el usuario mencione un código de vulnerabilidad ' +
+        '(CVE o GHSA), usa la herramienta getVulnerabilityDetails para obtener sus datos exactos ' +
+        'antes de responder, en vez de inventar detalles. Al explicar una vulnerabilidad, cubre ' +
+        'siempre: qué es, cómo afecta a la aplicación, su nivel de riesgo, y al menos una ' +
+        'alternativa concreta para corregirla.';
+
+      // --- Traducción por tarjeta (solo GAR) ---------------------------------
+      const translationCache = new Map();
+
+      async function toggleTranslate(button) {
+        const card = button.closest('.vuln-card');
+        const id = card.dataset.id;
+        const vuln = findVulnerability(id);
+        const titleEl = card.querySelector('.vuln-title');
+        const descEl = card.querySelector('.vuln-description');
+
+        if (button.dataset.state === 'es') {
+          titleEl.textContent = vuln.title;
+          descEl.textContent = vuln.description;
+          button.dataset.state = 'en';
+          button.textContent = '🌐 Traducir al español';
+          return;
+        }
+
+        const cached = translationCache.get(id);
+        if (cached) {
+          titleEl.textContent = cached.title;
+          descEl.textContent = cached.description;
+          button.dataset.state = 'es';
+          button.textContent = '🌐 Ver en inglés';
+          return;
+        }
+
+        const availability = await ai.isTranslationAvailable({ from: 'en', to: 'es' });
+        if (!availability.supported) {
+          descEl.insertAdjacentHTML(
+            'afterend',
+            '<p class="tab-subtitle">El Translator de Chrome no está disponible en este navegador.</p>',
+          );
+          return;
+        }
+
+        button.disabled = true;
+        const originalLabel = button.textContent;
+        button.textContent = 'Traduciendo…';
+
+        try {
+          const [title, description] = await Promise.all([
+            ai.translate(vuln.title, { from: 'en', to: 'es' }),
+            ai.translate(vuln.description, {
+              from: 'en',
+              to: 'es',
+              onDownloadProgress: (progress) => {
+                button.textContent = `Descargando idioma… ${Math.round(progress.loaded * 100)}%`;
+              },
+            }),
+          ]);
+
+          translationCache.set(id, { title, description });
+          titleEl.textContent = title;
+          descEl.textContent = description;
+          button.dataset.state = 'es';
+          button.textContent = '🌐 Ver en inglés';
+        } catch (error) {
+          button.textContent = originalLabel;
+          appendMessage(
+            'status',
+            `No se pudo traducir ${id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      // --- Panel de chat (mismo patrón que examples/shop-demo.html) ---------
+      const chatToggle = document.getElementById('chat-toggle');
+      const chatPanel = document.getElementById('chat-panel');
+      const chatMessages = document.getElementById('chat-messages');
+      const chatForm = document.getElementById('chat-form');
+      const chatInput = document.getElementById('chat-input');
+      const chatClose = document.getElementById('chat-close');
+      const chatReset = document.getElementById('chat-reset');
+      const chatSubmit = chatForm.querySelector('button[type="submit"]');
+      const availabilityBadge = document.getElementById('availability-badge');
+
+      let agent = null;
+      let agentPromise = null;
+      let sending = false;
+
+      function appendMessage(role, text) {
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble chat-bubble--${role}`;
+        bubble.textContent = text;
+        chatMessages.append(bubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return bubble;
+      }
+
+      // Placeholder shown the instant a message is sent, so there's always
+      // immediate feedback instead of a blank gap while the model produces
+      // its first token (which, for a long structured prompt, can take a
+      // few seconds on-device).
+      function appendThinkingBubble() {
+        const bubble = document.createElement('div');
+        bubble.className = 'chat-bubble chat-bubble--assistant chat-bubble--thinking';
+        bubble.innerHTML =
+          'Pensando<span class="thinking-dots"><span></span><span></span><span></span></span>';
+        chatMessages.append(bubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return bubble;
+      }
+
+      function appendDownloadStatus(text) {
+        const bubble = document.createElement('div');
+        bubble.className = 'chat-bubble chat-bubble--status';
+
+        const label = document.createElement('div');
+        label.textContent = text;
+
+        const track = document.createElement('div');
+        track.className = 'chat-progress';
+        const fill = document.createElement('div');
+        fill.className = 'chat-progress-fill';
+        track.append(fill);
+        bubble.append(label, track);
+
+        chatMessages.append(bubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        return {
+          setLabel(value) {
+            label.textContent = value;
+          },
+          setProgress(fraction) {
+            fill.style.width = `${Math.round(fraction * 100)}%`;
+          },
+        };
+      }
+
+      function ensureAgent() {
+        if (agent) {
+          return Promise.resolve(agent);
+        }
+
+        if (agentPromise) {
+          return agentPromise;
+        }
+
+        chatToggle.disabled = true;
+        const status = appendDownloadStatus('Iniciando el modelo…');
+
+        agentPromise = ai
+          .createAgent({
+            instructions: SECURITY_INSTRUCTIONS,
+            onDownloadProgress: (progress) => {
+              status.setLabel(`Descargando el modelo… ${Math.round(progress.loaded * 100)}%`);
+              status.setProgress(progress.loaded);
+            },
+          })
+          .then((created) => {
+            agent = created;
+            status.setProgress(1);
+            status.setLabel('Modelo listo — ¡pregunta lo que necesites!');
+            return agent;
+          })
+          .catch((error) => {
+            status.setLabel(
+              `No se pudo iniciar el modelo: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            throw error;
+          })
+          .finally(() => {
+            agentPromise = null;
+            chatToggle.disabled = false;
+          });
+
+        return agentPromise;
+      }
+
+      function openChat() {
+        chatPanel.hidden = false;
+      }
+
+      // `displayText` es lo que ve la persona en la burbuja; `promptForModel`
+      // es lo que de verdad recibe el modelo (más largo/estructurado cuando
+      // viene del botón "Analizar con IA").
+      async function sendToAgent(promptForModel, displayText) {
+        if (sending) {
+          return;
+        }
+
+        appendMessage('user', displayText);
+        sending = true;
+        chatSubmit.disabled = true;
+
+        const replyBubble = appendThinkingBubble();
+        let gotFirstChunk = false;
+
+        try {
+          const activeAgent = await ensureAgent();
+
+          for await (const delta of activeAgent.stream(promptForModel)) {
+            if (!gotFirstChunk) {
+              gotFirstChunk = true;
+              replyBubble.classList.remove('chat-bubble--thinking');
+              replyBubble.textContent = '';
+            }
+
+            replyBubble.textContent += delta;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          }
+
+          if (!gotFirstChunk) {
+            // The model finished without producing any text; drop the
+            // "Pensando…" placeholder instead of leaving it stuck on screen.
+            replyBubble.remove();
+          }
+        } catch (error) {
+          replyBubble.remove();
+          appendMessage('status', `Error: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          sending = false;
+          chatSubmit.disabled = false;
+        }
+      }
+
+      function buildAnalysisPrompt(vuln) {
+        const origen =
+          vuln.source === 'gar'
+            ? `la imagen de contenedor "${vuln.resource}"`
+            : 'este proyecto (auditoría de dependencias)';
+
+        return [
+          `Analiza en detalle la vulnerabilidad ${vuln.id} ("${vuln.title}") que afecta al ` +
+            `paquete "${vuln.package}@${vuln.version}" en ${origen}.`,
+          'Estructura tu respuesta en cuatro partes, en español:',
+          '1) Descripción: qué es la vulnerabilidad y su causa técnica.',
+          '2) Impacto: cómo podría afectar a esta aplicación en concreto.',
+          `3) Riesgo: nivel de severidad (${vuln.severity}) y por qué se clasifica así.`,
+          '4) Corrección: al menos dos alternativas concretas para solucionarla (por ejemplo, ' +
+            `actualizar a la versión corregida ${vuln.fixedVersion}, aplicar un workaround ` +
+            'temporal, o sustituir el componente).',
+        ].join('\n');
+      }
+
+      // Delegación de eventos: las tarjetas se generan dinámicamente, así que
+      // un único listener en <main> cubre los botones de todas ellas.
+      document.querySelector('main').addEventListener('click', (event) => {
+        const translateBtn = event.target.closest('.translate-btn');
+        if (translateBtn) {
+          toggleTranslate(translateBtn);
+          return;
+        }
+
+        const analyzeBtn = event.target.closest('.analyze-btn');
+        if (analyzeBtn) {
+          const card = analyzeBtn.closest('.vuln-card');
+          const vuln = findVulnerability(card.dataset.id);
+          if (!vuln) {
+            return;
+          }
+
+          openChat();
+          sendToAgent(buildAnalysisPrompt(vuln), `Analizar ${vuln.id}: ${vuln.title}`);
+        }
+      });
+
+      chatToggle.addEventListener('click', async () => {
+        const info = await refreshAvailability();
+
+        if (!info.supported) {
+          chatPanel.hidden = false;
+          appendMessage('status', 'La IA integrada de Chrome no está disponible en este navegador.');
+          return;
+        }
+
+        chatPanel.hidden = !chatPanel.hidden;
+
+        if (!chatPanel.hidden) {
+          chatInput.focus();
+          await ensureAgent().catch(() => {});
+        }
+      });
+
+      chatClose.addEventListener('click', () => {
+        chatPanel.hidden = true;
+      });
+
+      chatReset.addEventListener('click', () => {
+        agent?.destroy();
+        agent = null;
+        agentPromise = null;
+        chatMessages.replaceChildren();
+        appendMessage('status', 'Conversación reiniciada.');
+      });
+
+      chatForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const text = chatInput.value.trim();
+
+        if (!text || sending) {
+          return;
+        }
+
+        chatInput.value = '';
+        await sendToAgent(text, text);
+      });
+
+      function describeAvailability(info) {
+        switch (info.state) {
+          case 'available':
+            return 'Chrome AI: listo';
+          case 'downloadable':
+            return 'Chrome AI: listo para descargar';
+          case 'downloading':
+            return 'Chrome AI: descargando modelo…';
+          case 'unavailable':
+            return 'Chrome AI: no disponible en este dispositivo';
+          case 'unsupported':
+            return 'Chrome AI: no compatible con este navegador';
+          default:
+            return 'Chrome AI: comprobando…';
+        }
+      }
+
+      async function refreshAvailability() {
+        const info = await ai.isAvailable();
+        availabilityBadge.textContent = describeAvailability(info);
+        availabilityBadge.dataset.state = info.state;
+        return info;
+      }
+
+      refreshAvailability();
+    </script>
+  </body>
+</html>
