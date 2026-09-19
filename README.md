@@ -423,6 +423,28 @@ const getCartTotal = defineTool({
 ai.registerTool(getCartTotal);
 ```
 
+#### Web search
+
+Chrome's on-device model has no network access of its own, so it can't answer anything about
+current events, prices, or anything past its training data — unless you give it a tool that can.
+`defineWebSearchTool` wraps whichever search API/provider you plug in (Google Custom Search, Bing,
+Brave, Tavily, your own index, ...) into a ready-to-register tool, so the model can decide on its
+own when a question needs a live lookup:
+
+```ts
+import { defineWebSearchTool } from '@pilmee/ai';
+
+const webSearch = defineWebSearchTool({
+  async search(query) {
+    const res = await fetch(`https://api.example.com/search?q=${encodeURIComponent(query)}`);
+    const { results } = await res.json();
+    return results.map((r) => ({ title: r.title, url: r.url, snippet: r.snippet }));
+  },
+});
+
+ai.registerTool(webSearch);
+```
+
 ## Site scoping
 
 `scope.mode`:

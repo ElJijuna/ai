@@ -387,7 +387,7 @@
     </div>
 
     <script type="module">
-      import { AIOrchestrator, defineTool } from '../dist/index.js';
+      import { AIOrchestrator, defineTool, defineWebSearchTool } from '../dist/index.js';
 
       const sections = {
         home: {
@@ -480,6 +480,25 @@
       });
 
       ai.registerTool(goToSectionTool);
+
+      // Chrome's on-device model has no network access, so anything current-events
+      // or outside its training data needs a tool. Wikipedia's public search API
+      // needs no key and allows CORS (origin=*), so this works with no setup.
+      const webSearchTool = defineWebSearchTool({
+        async search(query) {
+          const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=5&srsearch=${encodeURIComponent(query)}`;
+          const response = await fetch(url);
+          const data = await response.json();
+
+          return data.query.search.map((item) => ({
+            title: item.title,
+            url: `https://en.wikipedia.org/wiki/${encodeURIComponent(item.title.replaceAll(' ', '_'))}`,
+            snippet: item.snippet.replace(/<[^>]+>/g, ''),
+          }));
+        },
+      });
+
+      ai.registerTool(webSearchTool);
 
       const mainHeading = document.getElementById('main-heading');
       const mainBody = document.getElementById('main-body');

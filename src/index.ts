@@ -17,6 +17,8 @@ export { Agent } from './orchestrator/Agent.js';
 export { AIOrchestrator } from './orchestrator/AIOrchestrator.js';
 export { defineTool } from './tools/defineTool.js';
 export { exposeToolsToPage, isWebMCPAvailable } from './tools/webmcp.js';
+export type { WebSearchResult, WebSearchToolOptions } from './tools/webSearch.js';
+export { defineWebSearchTool } from './tools/webSearch.js';
 export type {
   AgentConfig,
   AgentMessage,
