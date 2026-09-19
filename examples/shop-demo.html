@@ -387,7 +387,7 @@
     </div>
 
     <script type="module">
-      import { AIOrchestrator } from '../dist/index.js';
+      import { AIOrchestrator, defineTool } from '../dist/index.js';
 
       const sections = {
         home: {
@@ -438,6 +438,48 @@
           description: 'Aperture & Co., an online camera shop',
         },
       });
+
+      function buildSectionUrl(key) {
+        return `${location.origin}${location.pathname}#${key}`;
+      }
+
+      // Lets the model answer "where can I see pricing?" or "I have a warranty
+      // question" by both navigating the visitor there and handing back a real,
+      // shareable link — Chrome's Prompt API calls `execute` itself and feeds the
+      // return value back into the model's next turn.
+      const goToSectionTool = defineTool({
+        name: 'goToSection',
+        description:
+          "Navigates the visitor to a section of this storefront and returns the direct link to it. " +
+          'Call this whenever the user asks to see, go to, or open a section, or asks something best ' +
+          "answered by it: pricing questions -> 'pricing', shipping/returns/warranty -> 'support', " +
+          "questions about the camera itself -> 'product', anything else -> 'home'.",
+        inputSchema: {
+          type: 'object',
+          properties: {
+            section: {
+              type: 'string',
+              enum: Object.keys(sections),
+              description: 'Which section to open.',
+            },
+          },
+          required: ['section'],
+        },
+        execute({ section }) {
+          if (!sections[section]) {
+            return {
+              error: `Unknown section "${section}". Valid sections: ${Object.keys(sections).join(', ')}.`,
+            };
+          }
+
+          goToSection(section);
+          document.querySelector('main').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+          return { section, heading: sections[section].heading, url: buildSectionUrl(section) };
+        },
+      });
+
+      ai.registerTool(goToSectionTool);
 
       const mainHeading = document.getElementById('main-heading');
       const mainBody = document.getElementById('main-body');
@@ -522,6 +564,10 @@
         const token = sectionToken;
         const section = sections[key];
 
+        if (location.hash !== `#${key}`) {
+          history.replaceState(null, '', `#${key}`);
+        }
+
         // Replace, not merge: simulates a route change in an SPA, where the previous
         // section's context (e.g. a support ticket id) shouldn't leak into the next one.
         ai.setContext(section.context);
@@ -563,7 +609,16 @@
         translateToggle.disabled = false;
       });
 
-      goToSection('home');
+      const initialSection = location.hash.slice(1);
+      goToSection(sections[initialSection] ? initialSection : 'home');
+
+      window.addEventListener('hashchange', () => {
+        const key = location.hash.slice(1);
+
+        if (sections[key] && key !== currentSectionKey) {
+          goToSection(key);
+        }
+      });
 
       function describeAvailability(info) {
         switch (info.state) {
