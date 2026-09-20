@@ -7,7 +7,17 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const port = Number(process.env.PORT) || 4321;
-const demoPath = '/examples/shop-demo.html';
+
+const DEMOS = {
+  basic: '/examples/basic.html',
+  shop: '/examples/shop-demo.html',
+  'security-audit': '/examples/security-audit-demo.html',
+};
+
+const extraArgs = process.argv.slice(2);
+const watchMode = extraArgs.includes('--watch');
+const demoArg = extraArgs.find((arg) => !arg.startsWith('--'));
+const demoPath = !demoArg ? DEMOS.shop : (DEMOS[demoArg] ?? `/${demoArg.replace(/^\/+/, '')}`);
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -36,6 +46,42 @@ async function ensureBuilt() {
   }
 }
 
+/**
+ * Runs `tsc --watch` directly (bypassing `npm run build`'s `prebuild` -> `npm run
+ * clean` step), so edits to `src/` recompile incrementally instead of a full
+ * clean-and-rebuild on every save. Resolves once the first compile finishes, so the
+ * server never serves a stale/missing `dist/` on startup; keeps recompiling in the
+ * background afterward for every subsequent edit.
+ */
+function startWatchBuild() {
+  return new Promise((resolveBuild, rejectBuild) => {
+    const watcher = spawn(
+      'npx',
+      ['tsc', '-p', 'tsconfig.build.json', '--watch', '--preserveWatchOutput'],
+      { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] },
+    );
+    let firstCompileDone = false;
+
+    watcher.stdout.on('data', (chunk) => {
+      const text = chunk.toString();
+      process.stdout.write(text);
+
+      if (!firstCompileDone && /Found \d+ errors?\. Watching for file changes\./.test(text)) {
+        firstCompileDone = true;
+        resolveBuild(watcher);
+      }
+    });
+
+    watcher.on('exit', (code) => {
+      if (!firstCompileDone) {
+        rejectBuild(
+          new Error(`tsc --watch exited with code ${code} before finishing an initial build`),
+        );
+      }
+    });
+  });
+}
+
 function resolveSafePath(requestPath) {
   const decoded = decodeURIComponent(requestPath === '/' ? demoPath : requestPath);
   const target = resolve(root, `.${decoded}`);
@@ -55,7 +101,14 @@ function openBrowser(url) {
   spawn(command, args, { shell: isWindows, stdio: 'ignore', detached: true }).unref();
 }
 
-await ensureBuilt();
+let watcher;
+
+if (watchMode) {
+  console.log('Building once, then watching src/ for changes (incremental, no clean)...');
+  watcher = await startWatchBuild();
+} else {
+  await ensureBuilt();
+}
 
 const server = createServer(async (req, res) => {
   const requestPath = new URL(req.url ?? '/', 'http://localhost').pathname;
@@ -82,6 +135,24 @@ const server = createServer(async (req, res) => {
 server.listen(port, () => {
   const url = `http://localhost:${port}${demoPath}`;
   console.log(`@pilmee/ai demo running at ${url}`);
+  console.log(
+    `Other demos, same server: ${Object.entries(DEMOS)
+      .map(([name, path]) => `${name} (http://localhost:${port}${path})`)
+      .join(', ')}`,
+  );
+  console.log(
+    watchMode
+      ? 'Watching src/ — edits to the library recompile automatically; just reload the page.'
+      : 'Edited src/? Re-run with --watch, or `npm run build` and reload the page to pick it up.',
+  );
   console.log('Open it in Chrome with the built-in AI flags enabled. Press Ctrl+C to stop.');
   openBrowser(url);
 });
+
+function shutdown() {
+  watcher?.kill();
+  server.close(() => process.exit(0));
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

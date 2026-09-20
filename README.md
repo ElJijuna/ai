@@ -681,6 +681,23 @@ Linting, formatting, and TypeDoc are configured via
 [`super-configs`](https://www.npmjs.com/package/super-configs) (`eslint.config.js`, `biome.json`,
 `typedoc.json`).
 
+### Running the examples
+
+```bash
+npm run demo                    # builds once, serves examples/shop-demo.html, opens it
+npm run demo -- basic           # same server, opens examples/basic.html instead
+npm run demo -- security-audit  # opens examples/security-audit-demo.html
+npm run demo:watch              # like `demo`, but recompiles src/ incrementally on save
+npm run demo:watch -- basic     # combine a specific demo with watch mode
+```
+
+The static server it starts serves the whole repo, so all three examples are always reachable in
+the same run regardless of which one auto-opens — e.g. with the default `npm run demo`, open
+`http://localhost:4321/examples/basic.html` directly for the other one. `PORT=1234 npm run demo`
+picks a different port. Without `--watch`, edits to `src/` need `npm run build` (or a restart) to
+show up; `--watch` runs `tsc --watch` (incremental, skips the `clean` step `npm run build` does) so
+saving a file recompiles in place — just reload the page.
+
 ## Releasing
 
 Versioning, `CHANGELOG.md`, npm publishing, and GitHub releases are all automated by
