@@ -233,6 +233,39 @@ function toWebLLMMessages(messages: AIMessage[]): WebLLMMessage[] {
   return messages.map(toWebLLMMessage);
 }
 
+/**
+ * Builds the initial history from `Agent`'s `initialPrompts` (the site-scope guard,
+ * `instructions`, and context, seeded as a single system message). When tools are
+ * registered, web-llm's hardcoded function-calling support (currently every model in
+ * `functionCallingModelIds`) reserves the system role for its own tool-definition
+ * prompt and throws `CustomSystemPromptError` if any caller message also uses it -- so
+ * here the system message is folded into a user/assistant preamble instead, which
+ * still gets the scoping/instructions/context to the model without occupying that slot.
+ */
+function buildInitialHistory(
+  initialPrompts: AIMessage[] | undefined,
+  hasTools: boolean,
+): WebLLMMessage[] {
+  if (!initialPrompts?.length) {
+    return [];
+  }
+
+  const messages = toWebLLMMessages(initialPrompts);
+
+  if (!hasTools) {
+    return messages;
+  }
+
+  return messages.flatMap((message) =>
+    message.role === 'system'
+      ? [
+          { role: 'user' as const, content: message.content },
+          { role: 'assistant' as const, content: 'Understood.' },
+        ]
+      : [message],
+  );
+}
+
 function toPromptTurn(input: string | AIMessage[]): WebLLMMessage[] {
   return typeof input === 'string' ? [{ role: 'user', content: input }] : toWebLLMMessages(input);
 }
@@ -269,11 +302,25 @@ interface RoundOptions {
 }
 
 function buildResponseFormat(
-  responseConstraint?: Record<string, unknown>,
+  responseConstraint: Record<string, unknown> | undefined,
+  hasTools: boolean,
 ): { type: 'json_object'; schema: string } | undefined {
-  return responseConstraint
-    ? { type: 'json_object', schema: JSON.stringify(responseConstraint) }
-    : undefined;
+  if (!responseConstraint) {
+    return undefined;
+  }
+
+  if (hasTools) {
+    // web-llm's hardcoded function-calling support sets its own response_format for the
+    // tool-call schema and throws (`CustomResponseFormatError`) if the request already
+    // has one -- so this combination has no way to honor both at once.
+    throw new AIFeatureUnavailableError(
+      'languageModel',
+      "the WebGPU fallback can't combine `responseConstraint` with `tools` in the same " +
+        'call -- web-llm reserves the response format for its own tool-calling schema.',
+    );
+  }
+
+  return { type: 'json_object', schema: JSON.stringify(responseConstraint) };
 }
 
 /** Non-streaming prompt: runs the tool-call loop to completion and returns the final text reply. */
@@ -295,7 +342,7 @@ async function runToolLoop(
       messages: conversation,
       temperature: options.temperature,
       tools: chatTools,
-      response_format: buildResponseFormat(options.responseConstraint),
+      response_format: buildResponseFormat(options.responseConstraint, Boolean(chatTools)),
       stream: false,
     });
     const message = completion.choices[0]?.message;
@@ -353,7 +400,7 @@ async function* streamToolLoop(
       messages: conversation,
       temperature: options.temperature,
       tools: chatTools,
-      response_format: buildResponseFormat(options.responseConstraint),
+      response_format: buildResponseFormat(options.responseConstraint, Boolean(chatTools)),
       stream: true,
     });
 
@@ -533,7 +580,7 @@ async function createSession(
 
   const onProgress = createProgressEmitter(options.monitor);
   const engine = await awaitWithAbort(loadEngine(webllm, modelId, onProgress), options.signal);
-  const history = options.initialPrompts ? toWebLLMMessages(options.initialPrompts) : [];
+  const history = buildInitialHistory(options.initialPrompts, Boolean(options.tools?.length));
 
   return new WebGPULanguageModelSession(engine, history, options.temperature, options.tools);
 }

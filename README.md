@@ -555,6 +555,14 @@ need, given these are multi-GB downloads.
   reply as one chunk once it's ready, instead of token-by-token — a tool-call round can't be safely
   streamed live, since its partial text may just be function-call syntax rather than a user-facing
   reply.
+- **The site-scope guard/instructions/context arrive as a user/assistant preamble, not a system
+  message, once tools are registered.** Every model web-llm currently allows `tools` on hardcodes
+  its own tool-definition system prompt and throws if your conversation already has one — so this
+  library folds `scope`/`instructions`/`context` into an opening user turn (with a canned assistant
+  acknowledgment) instead. The model still receives the same guidance; it just isn't in the
+  `system` slot. `responseConstraint` can't be combined with `tools` in the same `send()`/`stream()`
+  call either, for the same reason (web-llm sets its own `response_format` for the tool-call
+  schema) — that combination throws `AIFeatureUnavailableError` immediately.
 - **No quota/usage reporting.** `agent.measureInputUsage()` resolves `undefined` and `agent.usage`
   is empty, same as any browser that doesn't report them.
 - **`getModelParams()` returns `null`.** `@mlc-ai/web-llm` has no equivalent to Chrome's

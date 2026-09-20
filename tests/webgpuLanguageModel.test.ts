@@ -148,6 +148,53 @@ describe('WebGPU fallback', () => {
     expect(getTime.execute).toHaveBeenCalledWith({});
   });
 
+  it('folds a non-empty system prompt into a user/assistant preamble when tools are registered', async () => {
+    const create = vi.fn((_request: { messages: Array<{ role: string; content: unknown }> }) =>
+      Promise.resolve({ choices: [{ message: { content: 'ok' } }] }),
+    );
+
+    installMockWebLLM(() => ({ chat: { completions: { create } } }));
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const noop: Tool = {
+      name: 'noop',
+      description: 'Does nothing.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => null,
+    };
+    const agent = await Agent.create({ scope: { site: 'example.com' }, tools: [noop] });
+
+    await agent.send('hi');
+
+    const [[request]] = create.mock.calls;
+
+    // web-llm's hardcoded Hermes function-calling path throws CustomSystemPromptError if
+    // any message uses the system role -- it reserves that slot for its own
+    // tool-definition prompt -- so the site-scope guard must arrive some other way.
+    expect(request.messages.map((message) => message.role)).not.toContain('system');
+    expect(request.messages[0].role).toBe('user');
+    expect(request.messages[0].content).toContain('example.com');
+    expect(request.messages[1].role).toBe('assistant');
+  });
+
+  it('rejects when responseConstraint and tools are combined in the same call', async () => {
+    installMockWebLLM(() =>
+      createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),
+    );
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const { AIFeatureUnavailableError } = await import('../src/errors.js');
+    const noop: Tool = {
+      name: 'noop',
+      description: 'Does nothing.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => null,
+    };
+    const agent = await Agent.create({ scope: { mode: 'off' }, tools: [noop] });
+
+    await expect(agent.send('hi', { responseConstraint: { type: 'object' } })).rejects.toThrow(
+      AIFeatureUnavailableError,
+    );
+  });
+
   it('auto-selects a function-calling-capable model when tools are registered without an explicit override', async () => {
     const createMLCEngine = installMockWebLLM(() =>
       createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),
