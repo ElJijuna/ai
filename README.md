@@ -502,8 +502,11 @@ if (availability.backend === 'webgpu') {
 
 ### Choosing a model
 
-Defaults to `Llama-3.2-3B-Instruct-q4f16_1-MLC` (~2.3GB VRAM, `low_resource_required`). Override it
-per agent or for every agent an orchestrator creates:
+Defaults to `Llama-3.2-3B-Instruct-q4f16_1-MLC` (~2.3GB VRAM, `low_resource_required`) — **unless
+the agent registers `tools`**, in which case it defaults to `Hermes-3-Llama-3.1-8B-q4f16_1-MLC`
+(~4.9GB VRAM) instead: web-llm hard-rejects `ChatCompletionRequest.tools` for any model outside its
+small function-calling allowlist, so the small default can't be reused as-is once tools are
+involved. Override either default per agent or for every agent an orchestrator creates:
 
 ```ts
 const ai = new AIOrchestrator({
@@ -511,27 +514,32 @@ const ai = new AIOrchestrator({
   webgpu: { model: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC' }, // lighter default for this orchestrator
 });
 
-const agent = await ai.createAgent({ webgpu: { model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC' } }); // per-agent override
+const agent = await ai.createAgent({ webgpu: { model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC' } }); // per-agent override
 ```
 
 Any model id from web-llm's
-[prebuilt list](https://github.com/mlc-ai/web-llm/blob/main/src/config.ts) works. `onDownloadProgress`
-reports the same `{ feature: 'languageModel', loaded }` shape as the Chrome path. Once a model is
-loaded, the underlying engine is cached and shared by every agent using that model id for the rest
-of the page's lifetime — creating agents doesn't redownload or reload it.
+[prebuilt list](https://github.com/mlc-ai/web-llm/blob/main/src/config.ts) works, but if you pass an
+explicit `webgpu.model` override for an agent that also registers `tools`, it must be one of
+web-llm's [`functionCallingModelIds`](https://github.com/mlc-ai/web-llm/blob/main/src/config.ts) —
+otherwise `createAgent()` rejects with a clear `AIFeatureUnavailableError` naming the models that do
+work, checked before anything downloads. `onDownloadProgress` reports the same
+`{ feature: 'languageModel', loaded }` shape as the Chrome path. Once a model is loaded, the
+underlying engine is cached and shared by every agent using that model id for the rest of the
+page's lifetime — creating agents doesn't redownload or reload it.
 
 ### Known limitations (WebGPU backend only; the Chrome path is unaffected)
 
 - **Text only.** Image/audio content parts throw `AIFeatureUnavailableError` — check
   `availability().backend` before offering photo/voice input.
-- **Tool calling is best-effort.** There's no in-browser tool-execution runtime to lean on (unlike
-  Chrome), so this library runs the tool-call loop itself, client-side. Small models are unreliable
-  at function calling — pick one of web-llm's
-  [`functionCallingModelIds`](https://github.com/mlc-ai/web-llm/blob/main/src/config.ts) (e.g.
-  `Hermes-3-Llama-3.1-8B-q4f16_1-MLC`) if you register tools. When tools are attached, `stream()`
-  yields the full reply as one chunk once it's ready, instead of token-by-token — a tool-call round
-  can't be safely streamed live, since its partial text may just be function-call syntax rather
-  than a user-facing reply.
+- **Tool calling needs one of a handful of models — enforced, not just recommended.** There's no
+  in-browser tool-execution runtime to lean on (unlike Chrome), so this library runs the tool-call
+  loop itself, client-side, and web-llm itself refuses `tools` outright for any model outside its
+  function-calling allowlist (see [Choosing a model](#choosing-a-model)). Even on a supported model,
+  small open models are still less reliable at function calling than Chrome's own tool handling —
+  expect more retries/malformed-argument cases. When tools are attached, `stream()` yields the full
+  reply as one chunk once it's ready, instead of token-by-token — a tool-call round can't be safely
+  streamed live, since its partial text may just be function-call syntax rather than a user-facing
+  reply.
 - **No quota/usage reporting.** `agent.measureInputUsage()` resolves `undefined` and `agent.usage`
   is empty, same as any browser that doesn't report them.
 - **`getModelParams()` returns `null`.** `@mlc-ai/web-llm` has no equivalent to Chrome's

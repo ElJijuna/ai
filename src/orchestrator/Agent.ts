@@ -1,6 +1,7 @@
 import { WebContext } from '../context/WebContext.js';
 import { AIFeatureNotSupportedError, AIFeatureUnavailableError } from '../errors.js';
 import { resolveLanguageModelBackend } from '../providers/resolveLanguageModel.js';
+import { DEFAULT_WEBGPU_TOOL_MODEL } from '../providers/webgpuLanguageModel.js';
 import type { AIMessage, LanguageModelSession } from '../types/chrome-ai.js';
 import type { AgentConfig, AgentMessage, PageContext, SendOptions } from '../types.js';
 import { createDownloadMonitor } from '../utils/download.js';
@@ -43,7 +44,12 @@ export class Agent {
 
   /** @internal */
   static async create(config: AgentConfig = {}): Promise<Agent> {
-    const backend = await resolveLanguageModelBackend({ model: config.webgpu?.model });
+    // web-llm rejects `tools` outright for models outside its small function-calling
+    // allowlist (a hard error, not just unreliable), so an agent that registers tools
+    // needs a capable model by default -- unless the caller explicitly picked one.
+    const webgpuModel =
+      config.webgpu?.model ?? (config.tools?.length ? DEFAULT_WEBGPU_TOOL_MODEL : undefined);
+    const backend = await resolveLanguageModelBackend({ model: webgpuModel });
 
     if (!backend) {
       throw new AIFeatureNotSupportedError('languageModel');

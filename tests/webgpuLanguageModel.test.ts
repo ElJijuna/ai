@@ -147,6 +147,70 @@ describe('WebGPU fallback', () => {
     expect(getTime.execute).toHaveBeenCalledWith({});
   });
 
+  it('auto-selects a function-calling-capable model when tools are registered without an explicit override', async () => {
+    const createMLCEngine = installMockWebLLM(() =>
+      createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),
+    );
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const noop: Tool = {
+      name: 'noop',
+      description: 'Does nothing.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => null,
+    };
+
+    await Agent.create({ scope: { mode: 'off' }, tools: [noop] });
+
+    expect(createMLCEngine).toHaveBeenCalledWith(
+      'Hermes-3-Llama-3.1-8B-q4f16_1-MLC',
+      expect.anything(),
+    );
+  });
+
+  it('rejects with AIFeatureUnavailableError before downloading anything when an explicit webgpu.model override does not support tools', async () => {
+    const createMLCEngine = installMockWebLLM(() =>
+      createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),
+    );
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const { AIFeatureUnavailableError } = await import('../src/errors.js');
+    const noop: Tool = {
+      name: 'noop',
+      description: 'Does nothing.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => null,
+    };
+
+    await expect(
+      Agent.create({
+        scope: { mode: 'off' },
+        tools: [noop],
+        webgpu: { model: 'Llama-3.2-3B-Instruct-q4f16_1-MLC' },
+      }),
+    ).rejects.toThrow(AIFeatureUnavailableError);
+    expect(createMLCEngine).not.toHaveBeenCalled();
+  });
+
+  it('succeeds when an explicit webgpu.model override does support tools', async () => {
+    installMockWebLLM(() =>
+      createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),
+    );
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const noop: Tool = {
+      name: 'noop',
+      description: 'Does nothing.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => null,
+    };
+
+    await expect(
+      Agent.create({
+        scope: { mode: 'off' },
+        tools: [noop],
+        webgpu: { model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC' },
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it('Agent#send rejects multimodal content with AIFeatureUnavailableError on the WebGPU backend', async () => {
     installMockWebLLM(() =>
       createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),

@@ -125,7 +125,12 @@ export interface WebGPUFallbackConfig {
   /**
    * A model id from `@mlc-ai/web-llm`'s prebuilt list
    * (https://github.com/mlc-ai/web-llm/blob/main/src/config.ts). Defaults to
-   * `'Llama-3.2-3B-Instruct-q4f16_1-MLC'` (~2.3GB VRAM).
+   * `'Llama-3.2-3B-Instruct-q4f16_1-MLC'` (~2.3GB VRAM) -- or, if the agent registers
+   * `tools`, to `'Hermes-3-Llama-3.1-8B-q4f16_1-MLC'` (~4.9GB VRAM) instead, since
+   * web-llm hard-rejects tool calling for models outside its small allowlist. An
+   * explicit override for an agent with `tools` must itself be one of that allowlist
+   * (`webllm.functionCallingModelIds`), or `createAgent()` throws
+   * `AIFeatureUnavailableError` before downloading anything.
    */
   model?: string;
 }

@@ -91,10 +91,20 @@ interface WebLLMModule {
     modelId: string,
     engineConfig?: { initProgressCallback?: (report: { progress: number }) => void },
   ) => Promise<WebLLMEngine>;
+  /** Model ids web-llm allows to receive `ChatCompletionRequest.tools` at all -- passing tools to any other model is a hard error, not just unreliable. */
+  functionCallingModelIds: string[];
 }
 
 /** A small, broadly-compatible instruct model (~2.3GB VRAM) used when no `webgpu.model` override is given. */
 export const DEFAULT_WEBGPU_MODEL = 'Llama-3.2-3B-Instruct-q4f16_1-MLC';
+
+/**
+ * Used instead of {@link DEFAULT_WEBGPU_MODEL} when the agent registers tools and no
+ * explicit `webgpu.model` override is given: web-llm rejects `ChatCompletionRequest.tools`
+ * outright for models outside its `functionCallingModelIds` allowlist, so the small
+ * default model can't be used as-is. ~4.9GB VRAM -- notably heavier than the plain default.
+ */
+export const DEFAULT_WEBGPU_TOOL_MODEL = 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC';
 
 /** Bounds the client-side tool-call loop (web-llm has no built-in equivalent to Chrome's in-browser tool execution). */
 const MAX_TOOL_ROUNDS = 4;
@@ -507,6 +517,19 @@ async function createSession(
   options: LanguageModelCreateOptions,
 ): Promise<LanguageModelSession> {
   throwIfAborted(options.signal);
+
+  // Checked before loading the engine (not on first send()/stream()) so a mismatched
+  // model+tools combo fails fast with an actionable message instead of after a multi-GB
+  // download, and surfaces as this library's own AIFeatureUnavailableError rather than
+  // web-llm's raw internal error -- Agent.create()'s existing try/catch wraps whatever
+  // this throws.
+  if (options.tools?.length && !webllm.functionCallingModelIds.includes(modelId)) {
+    throw new Error(
+      `model "${modelId}" doesn't support tools on the WebGPU fallback. Pass ` +
+        `webgpu: { model: '...' } with one of: ${webllm.functionCallingModelIds.join(', ')} ` +
+        '-- or create the agent without tools.',
+    );
+  }
 
   const onProgress = createProgressEmitter(options.monitor);
   const engine = await awaitWithAbort(loadEngine(webllm, modelId, onProgress), options.signal);

@@ -48,8 +48,20 @@ export function createMockEngine(
   };
 }
 
+/** Mirrors the real `functionCallingModelIds` web-llm ships as of 0.2.85. */
+export const MOCK_FUNCTION_CALLING_MODEL_IDS = [
+  'Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC',
+  'Hermes-2-Pro-Llama-3-8B-q4f32_1-MLC',
+  'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC',
+  'Hermes-3-Llama-3.1-8B-q4f32_1-MLC',
+  'Hermes-3-Llama-3.1-8B-q4f16_1-MLC',
+];
+
 /** Mocks the optional `@mlc-ai/web-llm` peer dependency for the current test's module registry. */
-export function installMockWebLLM(createEngine: () => unknown): ReturnType<typeof vi.fn> {
+export function installMockWebLLM(
+  createEngine: () => unknown,
+  options: { functionCallingModelIds?: string[] } = {},
+): ReturnType<typeof vi.fn> {
   const createMLCEngine = vi.fn(
     (
       _modelId: string,
@@ -61,7 +73,10 @@ export function installMockWebLLM(createEngine: () => unknown): ReturnType<typeo
     },
   );
 
-  vi.doMock('@mlc-ai/web-llm', () => ({ CreateMLCEngine: createMLCEngine }));
+  vi.doMock('@mlc-ai/web-llm', () => ({
+    CreateMLCEngine: createMLCEngine,
+    functionCallingModelIds: options.functionCallingModelIds ?? MOCK_FUNCTION_CALLING_MODEL_IDS,
+  }));
 
   return createMLCEngine;
 }
