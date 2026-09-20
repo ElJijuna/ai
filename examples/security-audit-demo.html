@@ -534,6 +534,17 @@
       </form>
     </div>
 
+    <!--
+      Mapea el especificador desnudo "@mlc-ai/web-llm" que el fallback opcional de WebGPU
+      importa dinámicamente (para navegadores sin la IA integrada de Chrome) a la copia bajo
+      node_modules, ya que un navegador sin bundler no puede resolver especificadores desnudos
+      por sí solo. Solo aplica cuando se sirve por http(s) (p. ej. `npm run demo`) y
+      @mlc-ai/web-llm está instalado.
+    -->
+    <script type="importmap">
+      { "imports": { "@mlc-ai/web-llm": "/node_modules/@mlc-ai/web-llm/lib/index.js" } }
+    </script>
+
     <script type="module">
       import { AIOrchestrator, defineTool } from '../dist/index.js';
 

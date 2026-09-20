@@ -13,7 +13,12 @@ describe('checkAvailability', () => {
     installMockLanguageModel({ availability: 'downloadable' });
     const info = await checkAvailability('languageModel');
 
-    expect(info).toEqual({ feature: 'languageModel', state: 'downloadable', supported: true });
+    expect(info).toEqual({
+      feature: 'languageModel',
+      state: 'downloadable',
+      supported: true,
+      backend: 'chrome',
+    });
   });
 
   it('reports unknown when the availability check throws (e.g. missing required options)', async () => {
@@ -23,7 +28,12 @@ describe('checkAvailability', () => {
     };
     const info = await checkAvailability('translator');
 
-    expect(info).toEqual({ feature: 'translator', state: 'unknown', supported: true });
+    expect(info).toEqual({
+      feature: 'translator',
+      state: 'unknown',
+      supported: true,
+      backend: 'chrome',
+    });
   });
 });
 

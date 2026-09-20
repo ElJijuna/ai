@@ -1,6 +1,7 @@
 import * as actions from '../actions/index.js';
 import { checkAvailability } from '../availability.js';
 import { captureDocumentContext, WebContext } from '../context/WebContext.js';
+import { resolveLanguageModelBackend } from '../providers/resolveLanguageModel.js';
 import { exposeToolsToPage } from '../tools/webmcp.js';
 import type {
   AgentConfig,
@@ -11,6 +12,7 @@ import type {
   PageContext,
   ScopeConfig,
   Tool,
+  WebGPUFallbackConfig,
 } from '../types.js';
 import { Agent } from './Agent.js';
 
@@ -36,6 +38,7 @@ export class AIOrchestrator {
   readonly #context: WebContext;
   readonly #tools = new Map<string, Tool>();
   readonly #onDownloadProgress: OrchestratorConfig['onDownloadProgress'];
+  readonly #webgpu: WebGPUFallbackConfig | undefined;
   readonly #exposeToolsToPage: boolean;
   readonly #agents = new Set<Agent>();
   #unexposeTools: (() => void) | undefined;
@@ -44,6 +47,7 @@ export class AIOrchestrator {
     this.#scope = config.scope;
     this.#context = new WebContext(config.context);
     this.#onDownloadProgress = config.onDownloadProgress;
+    this.#webgpu = config.webgpu;
     this.#exposeToolsToPage = config.exposeToolsToPage ?? false;
 
     for (const tool of config.tools ?? []) {
@@ -63,13 +67,19 @@ export class AIOrchestrator {
     return actions.isTranslationAvailable(options);
   }
 
-  /** Valid `temperature`/`topK` ranges for the Prompt API on this device, or `null` if unsupported. */
-  getModelParams(): Promise<ModelParams | null> {
-    if (typeof globalThis.LanguageModel === 'undefined') {
-      return Promise.resolve(null);
+  /**
+   * Valid `temperature`/`topK` ranges for the Prompt API on this device, or `null` if
+   * unsupported -- including when the WebGPU fallback is serving requests, since
+   * `@mlc-ai/web-llm` has no equivalent bounds to report.
+   */
+  async getModelParams(): Promise<ModelParams | null> {
+    const backend = await resolveLanguageModelBackend({ model: this.#webgpu?.model });
+
+    if (!backend) {
+      return null;
     }
 
-    return globalThis.LanguageModel.params();
+    return backend.api.params();
   }
 
   /** The context currently shared by this orchestrator and every agent it created. */
@@ -130,6 +140,7 @@ export class AIOrchestrator {
       onDownloadProgress: overrides.onDownloadProgress ?? this.#onDownloadProgress,
       onQuotaOverflow: overrides.onQuotaOverflow,
       signal: overrides.signal,
+      webgpu: overrides.webgpu ?? this.#webgpu,
     });
 
     this.#agents.add(agent);

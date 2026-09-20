@@ -7,9 +7,27 @@
   </head>
   <body>
     <h1>@pilmee/ai basic example</h1>
-    <p>Open with Chrome (Prompt API enabled) and check the console.</p>
+    <p>
+      Chrome (Prompt API enabled) uses Gemini Nano directly. Other WebGPU-capable browsers
+      (Safari, Firefox) fall back to an on-device open model via
+      <a href="https://github.com/mlc-ai/web-llm">@mlc-ai/web-llm</a> -- run
+      <code>npm install @mlc-ai/web-llm</code> first, then serve this page with
+      <code>npm run demo</code> (a plain <code>file://</code> open won't resolve the import map
+      below). Check the console for details either way.
+    </p>
     <button id="ask" type="button">Ask</button>
     <pre id="output"></pre>
+
+    <!--
+      Maps the bare "@mlc-ai/web-llm" specifier the optional WebGPU fallback dynamically
+      imports to the copy under node_modules, since plain browsers (no bundler) can't resolve
+      bare specifiers on their own. Only takes effect when served over http(s), e.g. `npm run
+      demo`; harmless if @mlc-ai/web-llm isn't installed; unused entirely when Chrome's own
+      built-in AI answers.
+    -->
+    <script type="importmap">
+      { "imports": { "@mlc-ai/web-llm": "/node_modules/@mlc-ai/web-llm/lib/index.js" } }
+    </script>
 
     <script type="module">
       import { AIOrchestrator } from '../dist/index.js';
@@ -23,13 +41,17 @@
       document.getElementById('ask').addEventListener('click', async () => {
         const availability = await ai.isAvailable();
         if (!availability.supported) {
-          output.textContent = 'Chrome built-in AI is not supported in this browser.';
+          output.textContent =
+            'No on-device AI available: this browser has neither Chrome\'s built-in AI nor ' +
+            'WebGPU + @mlc-ai/web-llm installed.';
           return;
         }
 
+        output.textContent = `Using backend: ${availability.backend}. `;
+
         const agent = await ai.createAgent({
           onDownloadProgress: (progress) => {
-            output.textContent = `Downloading model: ${Math.round(progress.loaded * 100)}%`;
+            output.textContent = `Downloading model (${availability.backend}): ${Math.round(progress.loaded * 100)}%`;
           },
         });
 

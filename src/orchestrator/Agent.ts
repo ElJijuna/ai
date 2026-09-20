@@ -1,5 +1,6 @@
 import { WebContext } from '../context/WebContext.js';
 import { AIFeatureNotSupportedError, AIFeatureUnavailableError } from '../errors.js';
+import { resolveLanguageModelBackend } from '../providers/resolveLanguageModel.js';
 import type { AIMessage, LanguageModelSession } from '../types/chrome-ai.js';
 import type { AgentConfig, AgentMessage, PageContext, SendOptions } from '../types.js';
 import { createDownloadMonitor } from '../utils/download.js';
@@ -42,7 +43,9 @@ export class Agent {
 
   /** @internal */
   static async create(config: AgentConfig = {}): Promise<Agent> {
-    if (typeof globalThis.LanguageModel === 'undefined') {
+    const backend = await resolveLanguageModelBackend({ model: config.webgpu?.model });
+
+    if (!backend) {
       throw new AIFeatureNotSupportedError('languageModel');
     }
 
@@ -57,7 +60,7 @@ export class Agent {
       : [];
 
     try {
-      const session = await globalThis.LanguageModel.create({
+      const session = await backend.api.create({
         initialPrompts,
         temperature: config.temperature,
         topK: config.topK,

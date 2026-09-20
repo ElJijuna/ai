@@ -1,7 +1,7 @@
 {
     "name": "@pilmee/ai",
     "version": "0.4.0",
-    "description": "A friendly, zero-dependency TypeScript orchestrator for Chrome's built-in AI APIs (Prompt API, Summarizer, Writer, Rewriter, Translator, Language Detector, Proofreader) with site-scoped context and WebMCP tool support.",
+    "description": "A friendly TypeScript orchestrator for Chrome's built-in AI APIs (Prompt API, Summarizer, Writer, Rewriter, Translator, Language Detector, Proofreader) with site-scoped context, WebMCP tool support, and an optional WebGPU fallback for browsers without Gemini Nano.",
     "type": "module",
     "main": "./dist/index.js",
     "module": "./dist/index.js",
@@ -44,6 +44,7 @@
         "prompt-api",
         "gemini-nano",
         "webllm",
+        "webgpu",
         "webmcp",
         "web-context",
         "on-device-ai",
@@ -60,6 +61,7 @@
     },
     "devDependencies": {
         "@biomejs/biome": "^2.5.3",
+        "@mlc-ai/web-llm": "^0.2.85",
         "@semantic-release/changelog": "^7.0.0",
         "@semantic-release/git": "^11.0.1",
         "@types/node": "^26.1.1",
@@ -72,6 +74,14 @@
         "typedoc": "^0.28.0",
         "typescript": "npm:@typescript/typescript6@^6.0.2",
         "vitest": "^3.0.0"
+    },
+    "peerDependencies": {
+        "@mlc-ai/web-llm": "^0.2.85"
+    },
+    "peerDependenciesMeta": {
+        "@mlc-ai/web-llm": {
+            "optional": true
+        }
     },
     "publishConfig": {
         "access": "public"

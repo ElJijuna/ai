@@ -386,6 +386,16 @@
       </form>
     </div>
 
+    <!--
+      Maps the bare "@mlc-ai/web-llm" specifier the optional WebGPU fallback dynamically
+      imports (for browsers without Chrome's built-in AI) to the copy under node_modules,
+      since plain browsers can't resolve bare specifiers without a bundler. Only takes effect
+      when served over http(s) (e.g. `npm run demo`) and @mlc-ai/web-llm is installed.
+    -->
+    <script type="importmap">
+      { "imports": { "@mlc-ai/web-llm": "/node_modules/@mlc-ai/web-llm/lib/index.js" } }
+    </script>
+
     <script type="module">
       import { AIOrchestrator, defineTool, defineWebSearchTool } from '../dist/index.js';
 

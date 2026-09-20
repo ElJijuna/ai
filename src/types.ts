@@ -27,6 +27,13 @@ export interface AvailabilityInfo {
   readonly state: AIAvailabilityState;
   /** Whether the browser exposes this API surface at all, independent of `state`. */
   readonly supported: boolean;
+  /**
+   * Which backend served this check. Always `'chrome'` today, except for
+   * `'languageModel'`, which reports `'webgpu'` when Chrome's built-in AI isn't
+   * present but the optional WebGPU fallback is (see {@link WebGPUFallbackConfig}).
+   * Omitted when `supported` is `false`.
+   */
+  readonly backend?: 'chrome' | 'webgpu';
 }
 
 /** How strictly an {@link Agent} should stay on-topic for the site it runs on. */
@@ -109,6 +116,20 @@ export interface SendOptions {
   raw?: boolean;
 }
 
+/**
+ * Configures the optional WebGPU fallback used for the Prompt API when Chrome's
+ * built-in AI isn't present (see the "WebGPU fallback" section of the README).
+ * Ignored entirely when Chrome's built-in AI serves the request.
+ */
+export interface WebGPUFallbackConfig {
+  /**
+   * A model id from `@mlc-ai/web-llm`'s prebuilt list
+   * (https://github.com/mlc-ai/web-llm/blob/main/src/config.ts). Defaults to
+   * `'Llama-3.2-3B-Instruct-q4f16_1-MLC'` (~2.3GB VRAM).
+   */
+  model?: string;
+}
+
 export interface AgentConfig {
   /** Extra system instructions, appended after the site-scope guard. */
   instructions?: string;
@@ -126,6 +147,8 @@ export interface AgentConfig {
   onQuotaOverflow?: () => void;
   /** Aborts session creation, including an in-flight model download. */
   signal?: AbortSignal;
+  /** Configures the optional WebGPU fallback; overrides the orchestrator's default. */
+  webgpu?: WebGPUFallbackConfig;
 }
 
 export interface OrchestratorConfig {
@@ -135,4 +158,6 @@ export interface OrchestratorConfig {
   /** Also register tools on `document.modelContext` (WebMCP; falls back to `navigator.modelContext` on older Chrome builds) when the page exposes it. */
   exposeToolsToPage?: boolean;
   onDownloadProgress?: (progress: DownloadProgress) => void;
+  /** Default WebGPU fallback config for every agent this orchestrator creates; overridable per-agent. */
+  webgpu?: WebGPUFallbackConfig;
 }

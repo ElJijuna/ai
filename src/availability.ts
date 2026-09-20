@@ -1,3 +1,4 @@
+import { resolveLanguageModelBackend } from './providers/resolveLanguageModel.js';
 import type { AIFeatureName, AvailabilityInfo } from './types.js';
 
 const GLOBAL_NAME_BY_FEATURE: Record<AIFeatureName, string> = {
@@ -24,8 +25,12 @@ function getFeatureApi(feature: AIFeatureName): FeatureApi | undefined {
  * Checks whether a Chrome built-in AI feature is supported and, when it is, how
  * ready it is to use (`available`, `downloadable`, `downloading`, or `unavailable`).
  *
+ * For `'languageModel'`, when Chrome's own API isn't present, this also checks the
+ * optional WebGPU fallback (see the "WebGPU fallback" section of the README) --
+ * `result.backend` says which one answered.
+ *
  * @param feature - Which built-in AI surface to check. Defaults to `'languageModel'`.
- * @param options - Feature-specific availability options, e.g. `{ sourceLanguage, targetLanguage }` for `'translator'`.
+ * @param options - Feature-specific availability options, e.g. `{ sourceLanguage, targetLanguage }` for `'translator'`, or `{ model }` to check a specific WebGPU model id.
  */
 export async function checkAvailability(
   feature: AIFeatureName = 'languageModel',
@@ -33,19 +38,35 @@ export async function checkAvailability(
 ): Promise<AvailabilityInfo> {
   const api = getFeatureApi(feature);
 
-  if (!api || typeof api.availability !== 'function') {
-    return { feature, state: 'unsupported', supported: false };
+  if (api && typeof api.availability === 'function') {
+    try {
+      const state = (await api.availability(options)) as AvailabilityInfo['state'];
+
+      return { feature, state, supported: true, backend: 'chrome' };
+    } catch {
+      // Some task APIs (e.g. the translator) require configuration -- such as a
+      // language pair -- before they can report a concrete state.
+      return { feature, state: 'unknown', supported: true, backend: 'chrome' };
+    }
   }
 
-  try {
-    const state = (await api.availability(options)) as AvailabilityInfo['state'];
+  if (feature === 'languageModel') {
+    const backend = await resolveLanguageModelBackend({ model: getModelOverride(options) });
 
-    return { feature, state, supported: true };
-  } catch {
-    // Some task APIs (e.g. the translator) require configuration -- such as a
-    // language pair -- before they can report a concrete state.
-    return { feature, state: 'unknown', supported: true };
+    if (backend) {
+      const state = (await backend.api.availability(options)) as AvailabilityInfo['state'];
+
+      return { feature, state, supported: true, backend: backend.kind };
+    }
   }
+
+  return { feature, state: 'unsupported', supported: false };
+}
+
+function getModelOverride(options?: Record<string, unknown>): string | undefined {
+  const model = options?.model;
+
+  return typeof model === 'string' ? model : undefined;
 }
 
 /** Runs {@link checkAvailability} for every known feature in parallel. */

@@ -1,8 +1,8 @@
 # @pilmee/ai
 
-A friendly, zero-dependency TypeScript library that orchestrates and centralizes calls to
-**Chrome's built-in AI APIs** (Prompt API / `LanguageModel`, `Summarizer`, `Writer`, `Rewriter`,
-`Translator`, `LanguageDetector`, `Proofreader`) behind one ergonomic API, with:
+A friendly TypeScript library that orchestrates and centralizes calls to **Chrome's built-in AI
+APIs** (Prompt API / `LanguageModel`, `Summarizer`, `Writer`, `Rewriter`, `Translator`,
+`LanguageDetector`, `Proofreader`) behind one ergonomic API, with:
 
 - **Site-scoped behavior** — agents default to only answering questions related to the site they run on.
 - **Availability checks** — know whether a feature is supported/downloadable/ready before you use it.
@@ -12,10 +12,14 @@ A friendly, zero-dependency TypeScript library that orchestrates and centralizes
 - **Default actions** — one-liners for summarize/write/rewrite/translate/detect-language/proofread.
 - **WebMCP-ready tools** — define tools once; they're passed to the model's function calling and,
   when the browser supports it, also exposed on `document.modelContext` (WebMCP).
+- **Optional WebGPU fallback** — the Prompt API (`Agent`) keeps working in browsers without Gemini
+  Nano (Firefox, Safari, non-Chrome Chromium, or Chrome on unsupported hardware) by running an
+  open-weights model on-device via WebGPU — see [WebGPU fallback](#webgpu-fallback).
 
 > These browser APIs are experimental (Chrome, behind flags/origin trials). This library
 > feature-detects everything and never assumes an API is present — see
-> [Recommendations](#recommendations) below.
+> [Recommendations](#recommendations) below. The core package has zero required dependencies; the
+> WebGPU fallback is opt-in (see below).
 
 ## Install
 
@@ -461,6 +465,89 @@ ai.registerTool(webSearch);
 **This is a steering instruction, not a security boundary** — see
 [Recommendations](#recommendations).
 
+## WebGPU fallback
+
+Chrome's built-in AI (Gemini Nano) only exists in Chrome, behind flags/origin trials, on
+compatible hardware. For everyone else — Firefox, Safari, non-Chrome Chromium builds, or Chrome on
+a machine that reports `unavailable` — the Prompt API (`AIOrchestrator.createAgent()` / `Agent`)
+can fall back to running a small open-weights model on-device via **WebGPU**, using
+[`@mlc-ai/web-llm`](https://github.com/mlc-ai/web-llm), **without changing any of the `Agent`
+API** you already use: `send()`, `stream()`, `clone()`, tools, `responseConstraint`, `signal`, etc.
+all keep working the same way.
+
+This is entirely opt-in and adds no dependency to the base install:
+
+```bash
+npm install @mlc-ai/web-llm
+```
+
+The fallback engages automatically, in this order, the first time something needs the Prompt API
+(`isAvailable()`, `createAgent()`, `getModelParams()`):
+
+1. Chrome's built-in `LanguageModel` global, if present — unchanged, existing behavior.
+2. Otherwise, if the browser supports WebGPU (`navigator.gpu`) **and** `@mlc-ai/web-llm` is
+   installed, the WebGPU fallback.
+3. Otherwise, `unsupported`/`AIFeatureNotSupportedError` — same as before this feature existed.
+
+`AvailabilityInfo` gained one additive field so you can tell which backend actually answered:
+
+```ts
+const availability = await ai.isAvailable();
+// { feature: 'languageModel', state: 'downloadable', supported: true, backend: 'webgpu' }
+
+if (availability.backend === 'webgpu') {
+  // e.g. adjust copy: "on-device AI (open model)" vs Chrome's own Gemini Nano messaging.
+}
+```
+
+### Choosing a model
+
+Defaults to `Llama-3.2-3B-Instruct-q4f16_1-MLC` (~2.3GB VRAM, `low_resource_required`). Override it
+per agent or for every agent an orchestrator creates:
+
+```ts
+const ai = new AIOrchestrator({
+  scope: { site: 'shop.example.com' },
+  webgpu: { model: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC' }, // lighter default for this orchestrator
+});
+
+const agent = await ai.createAgent({ webgpu: { model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC' } }); // per-agent override
+```
+
+Any model id from web-llm's
+[prebuilt list](https://github.com/mlc-ai/web-llm/blob/main/src/config.ts) works. `onDownloadProgress`
+reports the same `{ feature: 'languageModel', loaded }` shape as the Chrome path. Once a model is
+loaded, the underlying engine is cached and shared by every agent using that model id for the rest
+of the page's lifetime — creating agents doesn't redownload or reload it.
+
+### Known limitations (WebGPU backend only; the Chrome path is unaffected)
+
+- **Text only.** Image/audio content parts throw `AIFeatureUnavailableError` — check
+  `availability().backend` before offering photo/voice input.
+- **Tool calling is best-effort.** There's no in-browser tool-execution runtime to lean on (unlike
+  Chrome), so this library runs the tool-call loop itself, client-side. Small models are unreliable
+  at function calling — pick one of web-llm's
+  [`functionCallingModelIds`](https://github.com/mlc-ai/web-llm/blob/main/src/config.ts) (e.g.
+  `Hermes-3-Llama-3.1-8B-q4f16_1-MLC`) if you register tools. When tools are attached, `stream()`
+  yields the full reply as one chunk once it's ready, instead of token-by-token — a tool-call round
+  can't be safely streamed live, since its partial text may just be function-call syntax rather
+  than a user-facing reply.
+- **No quota/usage reporting.** `agent.measureInputUsage()` resolves `undefined` and `agent.usage`
+  is empty, same as any browser that doesn't report them.
+- **`getModelParams()` returns `null`.** `@mlc-ai/web-llm` has no equivalent to Chrome's
+  temperature/topK bounds.
+- **Concurrent generations on the same model queue up**, rather than running in parallel — expect
+  latency, not errors, if several agents on the same model id are prompted at once.
+- **Only the Prompt API (`Agent`) has a fallback.** `summarize`/`write`/`rewrite`/`translate`/
+  `detectLanguage`/`proofread` remain Chrome-only for now.
+
+### Bundlers
+
+The dynamic `import('@mlc-ai/web-llm')` is marked with `webpackIgnore`/`@vite-ignore` comments so
+webpack and Vite's dev server don't try to resolve it at build time for apps that never install it.
+If your production bundler (e.g. Rollup via Vite) still fails to resolve it because it's genuinely
+not installed, either install it or mark it external in your bundler config.
+
 ## Recommendations
 
 Practical guidance for building on top of Chrome's built-in AI, informed by how this library
@@ -474,7 +561,10 @@ handles each concern internally:
   Real device support requires ~22GB free storage, 4GB+ VRAM, and a non-metered network for the
   model download — a large share of laptops and most mobile devices will report `unavailable`.
 - These APIs currently only ship in Chrome (desktop), behind `chrome://flags` and/or origin trials
-  depending on version. Always have a non-AI fallback path; never gate core functionality on them.
+  depending on version. The optional [WebGPU fallback](#webgpu-fallback) extends the Prompt API
+  (`Agent`) to other WebGPU-capable browsers, but coverage still isn't universal (older browsers,
+  most mobile devices, WebGPU-less configs). Always have a non-AI fallback path; never gate core
+  functionality on either backend.
 - The concrete global names, method shapes, and streaming semantics are still evolving. Pin this
   library, read its changelog before upgrading, and don't hardcode assumptions about the raw
   `LanguageModel`/`Summarizer`/etc. globals in app code — go through this library's API instead.

@@ -50,4 +50,5 @@ export type {
   SendOptions,
   TextContentPart,
   Tool,
+  WebGPUFallbackConfig,
 } from './types.js';
