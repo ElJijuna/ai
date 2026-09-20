@@ -339,7 +339,12 @@ async function runToolLoop(
     throwIfAborted(options.signal);
 
     const completion = await engine.chat.completions.create({
-      messages: conversation,
+      // web-llm's hardcoded Hermes function-calling support mutates the `messages`
+      // array it's given (it `unshift()`s its own tool-definition system message onto
+      // it) -- a shallow copy keeps that mutation from leaking into `conversation`,
+      // which would otherwise poison every later round with a stray system message
+      // and trigger `CustomSystemPromptError` on round 2+.
+      messages: [...conversation],
       temperature: options.temperature,
       tools: chatTools,
       response_format: buildResponseFormat(options.responseConstraint, Boolean(chatTools)),
@@ -355,8 +360,12 @@ async function runToolLoop(
     }
 
     conversation = [
+      // web-llm's conversation-template code rejects a non-string `content` on any
+      // assistant message that isn't the very last one in the array (it accepts `null`
+      // as *output* for a tool-calling turn, but not as input on a later round) --
+      // `?? ''` keeps a tool-calling round's typically-null content from breaking round 2+.
       ...conversation,
-      { role: 'assistant', content: message.content, tool_calls: toolCalls },
+      { role: 'assistant', content: message.content ?? '', tool_calls: toolCalls },
     ];
 
     for (const call of toolCalls) {
@@ -397,7 +406,10 @@ async function* streamToolLoop(
     throwIfAborted(options.signal);
 
     const stream = await engine.chat.completions.create({
-      messages: conversation,
+      // See the matching comment in runToolLoop: web-llm mutates the `messages` array
+      // in place, so a shallow copy stops that from poisoning `conversation` for later
+      // rounds.
+      messages: [...conversation],
       temperature: options.temperature,
       tools: chatTools,
       response_format: buildResponseFormat(options.responseConstraint, Boolean(chatTools)),
@@ -445,8 +457,11 @@ async function* streamToolLoop(
     }));
 
     conversation = [
+      // See the matching comment in runToolLoop: web-llm rejects a non-string `content`
+      // on an assistant message that isn't the last one in the array, so this must stay
+      // a string (possibly empty) rather than `null`.
       ...conversation,
-      { role: 'assistant', content: content || null, tool_calls: toolCalls },
+      { role: 'assistant', content, tool_calls: toolCalls },
     ];
 
     for (const call of toolCalls) {

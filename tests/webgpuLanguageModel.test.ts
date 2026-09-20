@@ -195,6 +195,68 @@ describe('WebGPU fallback', () => {
     );
   });
 
+  it('survives a multi-round tool call against a web-llm-faithful mock (mutates `messages` in place, rejects null assistant content)', async () => {
+    // Real @mlc-ai/web-llm's hardcoded Hermes function-calling support does two things
+    // that a naive mock wouldn't catch, and that this exact test caught as live-browser
+    // regressions before these two fixes existed:
+    //  1. It `unshift()`s its own tool-definition system message onto the `messages`
+    //     array *it was given* -- if that's the same array reference the caller keeps
+    //     reusing across rounds, round 2 sees a stray system message and throws
+    //     `CustomSystemPromptError`.
+    //  2. It throws if any assistant message that isn't the very last one has
+    //     non-string `content` -- which a tool-calling turn's `content: null` becomes,
+    //     once carried into the next round, unless converted to `''` first.
+    let round = 0;
+
+    const create = vi.fn((request: { messages: Array<{ role: string; content: unknown }> }) => {
+      round += 1;
+
+      for (let i = 0; i < request.messages.length - 1; i += 1) {
+        const message = request.messages[i];
+
+        if (message.role === 'system') {
+          throw new Error('CustomSystemPromptError: cannot specify customized system prompt');
+        }
+
+        if (message.role === 'assistant' && typeof message.content !== 'string') {
+          throw new Error('ContentTypeError: assistant message should have string content');
+        }
+      }
+
+      request.messages.unshift({ role: 'system', content: 'FAKE hermes function-calling prompt' });
+
+      if (round === 1) {
+        return Promise.resolve({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  { id: 'call_1', type: 'function', function: { name: 'noop', arguments: '{}' } },
+                ],
+              },
+            },
+          ],
+        });
+      }
+
+      return Promise.resolve({ choices: [{ message: { content: 'Final answer.' } }] });
+    });
+
+    installMockWebLLM(() => ({ chat: { completions: { create } } }));
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const noop: Tool = {
+      name: 'noop',
+      description: 'Does nothing.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => null,
+    };
+    const agent = await Agent.create({ scope: { site: 'example.com' }, tools: [noop] });
+
+    await expect(agent.send('hi')).resolves.toBe('Final answer.');
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
   it('auto-selects a function-calling-capable model when tools are registered without an explicit override', async () => {
     const createMLCEngine = installMockWebLLM(() =>
       createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),
