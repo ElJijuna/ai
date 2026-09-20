@@ -25,6 +25,7 @@ export { checkAllAvailability, checkAvailability, isReady } from './availability
 export type { ContextListener } from './context/WebContext.js';
 export { captureDocumentContext, WebContext } from './context/WebContext.js';
 export { AIFeatureNotSupportedError, AIFeatureUnavailableError, AILibError } from './errors.js';
+export type { PreloadOptions } from './orchestrator/Agent.js';
 export { Agent } from './orchestrator/Agent.js';
 export { AIOrchestrator } from './orchestrator/AIOrchestrator.js';
 export { defineTool } from './tools/defineTool.js';

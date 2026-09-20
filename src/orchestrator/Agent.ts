@@ -1,12 +1,33 @@
 import { WebContext } from '../context/WebContext.js';
 import { AIFeatureNotSupportedError, AIFeatureUnavailableError } from '../errors.js';
-import { resolveLanguageModelBackend } from '../providers/resolveLanguageModel.js';
+import {
+  type LanguageModelBackend,
+  resolveLanguageModelBackend,
+} from '../providers/resolveLanguageModel.js';
 import { DEFAULT_WEBGPU_TOOL_MODEL } from '../providers/webgpuLanguageModel.js';
 import type { AIMessage, LanguageModelSession } from '../types/chrome-ai.js';
-import type { AgentConfig, AgentMessage, PageContext, SendOptions } from '../types.js';
+import type {
+  AgentConfig,
+  AgentMessage,
+  DownloadProgress,
+  PageContext,
+  SendOptions,
+  Tool,
+  WebGPUFallbackConfig,
+} from '../types.js';
 import { createDownloadMonitor } from '../utils/download.js';
 import { normalizeTextStream, toAsyncIterable } from '../utils/stream.js';
 import { buildSystemPrompt } from './systemPrompt.js';
+
+/** Options for {@link Agent.preload}: everything relevant to *which model loads*, nothing about the chat session itself (scope/context/instructions don't affect what downloads). */
+export interface PreloadOptions {
+  /** Tools the eventual agent will register -- affects the tools-aware default model (see {@link Agent.create}). */
+  tools?: Tool[];
+  webgpu?: WebGPUFallbackConfig;
+  onDownloadProgress?: (progress: DownloadProgress) => void;
+  /** Aborts the download/initialization. */
+  signal?: AbortSignal;
+}
 
 function toPromptInput(message: AgentMessage): string | AIMessage[] {
   if (typeof message === 'string') {
@@ -45,11 +66,16 @@ export class Agent {
     });
   }
 
-  /** @internal */
-  static async create(config: AgentConfig = {}): Promise<Agent> {
-    // web-llm rejects `tools` outright for models outside its small function-calling
-    // allowlist (a hard error, not just unreliable), so an agent that registers tools
-    // needs a capable model by default -- unless the caller explicitly picked one.
+  /**
+   * Resolves the backend for a call that may register `tools`: web-llm rejects `tools`
+   * outright for models outside its small function-calling allowlist (a hard error, not
+   * just unreliable), so a caller registering tools needs a capable model by default --
+   * unless it explicitly picked one.
+   */
+  static async #resolveBackend(config: {
+    webgpu?: WebGPUFallbackConfig;
+    tools?: Tool[];
+  }): Promise<LanguageModelBackend> {
     const webgpuModel =
       config.webgpu?.model ?? (config.tools?.length ? DEFAULT_WEBGPU_TOOL_MODEL : undefined);
     const backend = await resolveLanguageModelBackend({ model: webgpuModel });
@@ -58,6 +84,48 @@ export class Agent {
       throw new AIFeatureNotSupportedError('languageModel');
     }
 
+    return backend;
+  }
+
+  /**
+   * Starts downloading/initializing the model without building a full chat session --
+   * so it's already warm by the time the user sends a first message, instead of making
+   * them wait through the download. Only the model-selection-relevant options apply
+   * (`tools`, `webgpu`, `onDownloadProgress`, `signal`); scope/context/instructions only
+   * affect the system prompt, not what downloads, so they're not accepted here.
+   *
+   * Like `createAgent()`, triggering an actual download typically still needs a user
+   * gesture on many configurations -- call this from a real interaction (opening a chat
+   * panel, hovering the chat button) rather than unconditionally on page load.
+   *
+   * On the WebGPU fallback, the underlying engine is cached by model id (see
+   * {@link Agent.create}), so this is genuinely reusable: a later `createAgent()` call
+   * for the same model resolves near-instantly instead of redownloading. On Chrome, the
+   * downloaded model is a shared on-device asset outliving any one session, so the
+   * throwaway session this creates is destroyed immediately once ready.
+   */
+  static async preload(options: PreloadOptions = {}): Promise<void> {
+    const backend = await Agent.#resolveBackend(options);
+
+    try {
+      const session = await backend.api.create({
+        tools: options.tools,
+        signal: options.signal,
+        monitor: createDownloadMonitor('languageModel', options.onDownloadProgress),
+      });
+
+      session.destroy();
+    } catch (cause) {
+      throw new AIFeatureUnavailableError(
+        'languageModel',
+        cause instanceof Error ? cause.message : undefined,
+      );
+    }
+  }
+
+  /** @internal */
+  static async create(config: AgentConfig = {}): Promise<Agent> {
+    const backend = await Agent.#resolveBackend(config);
     const context = new WebContext(config.context);
     const systemPrompt = buildSystemPrompt({
       scope: config.scope,

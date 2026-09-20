@@ -64,6 +64,49 @@ describe('Agent.create', () => {
   });
 });
 
+describe('Agent.preload', () => {
+  it('throws AIFeatureNotSupportedError when the browser has no LanguageModel', async () => {
+    await expect(Agent.preload()).rejects.toThrow(AIFeatureNotSupportedError);
+  });
+
+  it('creates and immediately destroys a throwaway session, without a system prompt', async () => {
+    const session = createMockLanguageModelSession();
+    const { static: mock } = installMockLanguageModel({ session });
+
+    await Agent.preload();
+
+    expect(session.destroy).toHaveBeenCalledTimes(1);
+    const [[options]] = vi.mocked(mock.create).mock.calls;
+
+    expect(options?.initialPrompts).toBeUndefined();
+  });
+
+  it('passes tools through, with no initialPrompts key at all', async () => {
+    const { static: mock } = installMockLanguageModel();
+    const tool = {
+      name: 'noop',
+      description: 'noop',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => null,
+    };
+
+    await Agent.preload({ tools: [tool] });
+
+    const [[options]] = vi.mocked(mock.create).mock.calls;
+
+    expect(options?.tools).toEqual([tool]);
+    expect(options?.initialPrompts).toBeUndefined();
+  });
+
+  it('wraps a create() rejection in AIFeatureUnavailableError', async () => {
+    const { static: mock } = installMockLanguageModel();
+
+    vi.mocked(mock.create).mockRejectedValueOnce(new Error('no compatible GPU'));
+
+    await expect(Agent.preload()).rejects.toThrow(AIFeatureUnavailableError);
+  });
+});
+
 describe('Agent#send / stream', () => {
   it('delegates send() to the underlying session', async () => {
     const session = createMockLanguageModelSession();

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { AIFeatureNotSupportedError } from '../src/errors.js';
 import { AIOrchestrator } from '../src/orchestrator/AIOrchestrator.js';
 import { defineTool } from '../src/tools/defineTool.js';
 import { createMockLanguageModelSession, installMockLanguageModel } from './mocks/chrome-ai.js';
@@ -72,6 +73,35 @@ describe('AIOrchestrator tool management', () => {
     const secondCall = vi.mocked(mock.create).mock.calls[1]?.[0];
 
     expect(secondCall?.tools).toEqual([toolB]);
+  });
+});
+
+describe('AIOrchestrator.preload', () => {
+  it('warms the model with registered tools merged in, without creating a chat session', async () => {
+    const { static: mock, session } = installMockLanguageModel();
+    const toolA = defineTool({
+      name: 'a',
+      description: 'A',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => 1,
+    });
+    const ai = new AIOrchestrator();
+
+    ai.registerTool(toolA);
+    await ai.preload();
+
+    expect(mock.create).toHaveBeenCalledTimes(1);
+    const [[options]] = vi.mocked(mock.create).mock.calls;
+
+    expect(options?.tools).toEqual([toolA]);
+    expect(options?.initialPrompts).toBeUndefined();
+    expect(session.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws AIFeatureNotSupportedError when unsupported, same as createAgent()', async () => {
+    const ai = new AIOrchestrator();
+
+    await expect(ai.preload()).rejects.toThrow(AIFeatureNotSupportedError);
   });
 });
 

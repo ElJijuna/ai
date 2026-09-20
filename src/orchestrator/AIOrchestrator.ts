@@ -14,7 +14,7 @@ import type {
   Tool,
   WebGPUFallbackConfig,
 } from '../types.js';
-import { Agent } from './Agent.js';
+import { Agent, type PreloadOptions } from './Agent.js';
 
 /**
  * The single entry point for a site: holds shared scope, context, and tools, spawns
@@ -121,6 +121,23 @@ export class AIOrchestrator {
   unregisterTool(name: string): void {
     this.#tools.delete(name);
     this.#syncToolsToPage();
+  }
+
+  /**
+   * Starts downloading/initializing the Prompt API model ahead of time -- so it's ready
+   * before the user's first message instead of making them wait through it -- without
+   * creating a full chat {@link Agent}. Inherits registered tools and the orchestrator's
+   * `webgpu`/`onDownloadProgress` defaults, both overridable. See {@link Agent.preload}
+   * for what this does and doesn't need (no scope/context: they don't affect what
+   * downloads) and the user-gesture caveat that still applies.
+   */
+  async preload(overrides: PreloadOptions = {}): Promise<void> {
+    return Agent.preload({
+      tools: [...this.#tools.values(), ...(overrides.tools ?? [])],
+      webgpu: overrides.webgpu ?? this.#webgpu,
+      onDownloadProgress: overrides.onDownloadProgress ?? this.#onDownloadProgress,
+      signal: overrides.signal,
+    });
   }
 
   /**

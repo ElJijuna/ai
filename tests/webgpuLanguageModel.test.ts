@@ -255,6 +255,44 @@ describe('WebGPU fallback', () => {
     });
   });
 
+  it('Agent.preload() warms the default model without creating a chat session, so a later createAgent() hits the cache', async () => {
+    const createMLCEngine = installMockWebLLM(() =>
+      createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),
+    );
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const { checkAvailability } = await import('../src/availability.js');
+
+    expect((await checkAvailability('languageModel')).state).toBe('downloadable');
+
+    await Agent.preload();
+
+    expect(createMLCEngine).toHaveBeenCalledWith(
+      'Llama-3.2-3B-Instruct-q4f16_1-MLC',
+      expect.anything(),
+    );
+    expect((await checkAvailability('languageModel')).state).toBe('available');
+  });
+
+  it('Agent.preload() picks the tools-aware default model when tools are given', async () => {
+    const createMLCEngine = installMockWebLLM(() =>
+      createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),
+    );
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const noop: Tool = {
+      name: 'noop',
+      description: 'Does nothing.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => null,
+    };
+
+    await Agent.preload({ tools: [noop] });
+
+    expect(createMLCEngine).toHaveBeenCalledWith(
+      'Hermes-3-Llama-3.1-8B-q4f16_1-MLC',
+      expect.anything(),
+    );
+  });
+
   it('agent.model is undefined when Chrome serves the request', async () => {
     const { installMockLanguageModel } = await import('./mocks/chrome-ai.js');
 

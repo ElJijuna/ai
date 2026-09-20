@@ -284,6 +284,7 @@ ai.registerTool(myTool);
 ai.registerTools([toolA, toolB]);
 ai.unregisterTool('myTool');
 
+await ai.preload(); // starts downloading/initializing the model without opening a chat session
 const agent = await ai.createAgent({ instructions: 'Answer briefly.' });
 ai.destroyAgents(); // cleans up every agent this orchestrator created
 ```
@@ -536,7 +537,10 @@ otherwise `createAgent()` rejects with a clear `AIFeatureUnavailableError` namin
 work, checked before anything downloads. `onDownloadProgress` reports the same
 `{ feature: 'languageModel', loaded }` shape as the Chrome path. Once a model is loaded, the
 underlying engine is cached and shared by every agent using that model id for the rest of the
-page's lifetime — creating agents doesn't redownload or reload it.
+page's lifetime — creating agents doesn't redownload or reload it, which makes `ai.preload({ webgpu, tools })`
+(see [User activation & downloads](#recommendations)) especially worth using here: pass the same
+`webgpu`/`tools` you'll eventually create the agent with, so it warms the exact model that call will
+need, given these are multi-GB downloads.
 
 ### Known limitations (WebGPU backend only; the Chrome path is unaffected)
 
@@ -591,12 +595,18 @@ handles each concern internally:
 **User activation & downloads**
 
 - Triggering a model download typically requires a user gesture (click/tap) on many
-  configurations — don't call `createAgent()`/actions eagerly on page load if the model isn't
-  downloaded yet; trigger it from a button handler.
-- Pass `onDownloadProgress` and show a progress indicator; downloads can be hundreds of MB to a
-  few GB and take minutes.
-- Support cancellation: pass an `AbortSignal` to `createAgent()`/actions so users can back out of a
-  long download.
+  configurations — don't call `createAgent()`/`preload()`/actions eagerly on unconditional page
+  load if the model isn't downloaded yet; trigger it from a button handler or another real
+  interaction.
+- To start the download as soon as the user shows intent — opening a chat panel, hovering the chat
+  button — without waiting for their first actual message, call `ai.preload()` there instead of
+  `createAgent()`. It's a lighter call (no system prompt, no session to manage) that just warms the
+  model; `createAgent()` right after resolves near-instantly once it's ready. Opening the panel is
+  itself the qualifying gesture, so this doesn't get around the requirement above.
+- Pass `onDownloadProgress` (to `preload()`, `createAgent()`, or an action) and show a progress
+  indicator; downloads can be hundreds of MB to a few GB and take minutes.
+- Support cancellation: pass an `AbortSignal` to `preload()`/`createAgent()`/actions so users can
+  back out of a long download.
 
 **Performance**
 
