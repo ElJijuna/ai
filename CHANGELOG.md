@@ -1,3 +1,15 @@
+# [0.5.0](https://github.com/ElJijuna/ai/compare/v0.4.0...v0.5.0) (2026-09-20)
+
+
+### Features
+
+* add demo script enhancements for incremental builds and multiple demo options ([29474b9](https://github.com/ElJijuna/ai/commit/29474b97a5266de58e08fd8e4dd497f7c7e0c009))
+* add model id exposure for WebGPU fallback in Agent and availability checks ([512faf7](https://github.com/ElJijuna/ai/commit/512faf72319ecadf98c01b9379e1f0a83c40770d))
+* enhance WebGPU model selection for agents with tools, ensuring compatibility and error handling ([71e230d](https://github.com/ElJijuna/ai/commit/71e230d76ac7c9819889cb2bf1e1f7acc4d6cf14))
+* fold system prompt into user/assistant preamble for tool registration and enforce responseConstraint restrictions ([8d98f63](https://github.com/ElJijuna/ai/commit/8d98f63338abc5a4be4b85080d56b4a1b35ee7b6))
+* implement model preloading in Agent and AIOrchestrator for improved user experience ([07f91b4](https://github.com/ElJijuna/ai/commit/07f91b42be75ac25c8501ad3cd3d49dbf5fd7b3f))
+* integrate optional WebGPU fallback using @mlc-ai/web-llm ([9c3f566](https://github.com/ElJijuna/ai/commit/9c3f5669ea9595d274339f86dc409df124990aae))
+
 # [0.4.0](https://github.com/ElJijuna/ai/compare/v0.3.0...v0.4.0) (2026-09-19)
 
 
