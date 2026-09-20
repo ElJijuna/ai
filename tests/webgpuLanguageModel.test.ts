@@ -36,6 +36,7 @@ describe('WebGPU fallback', () => {
       state: 'downloadable',
       supported: true,
       backend: 'webgpu',
+      model: 'Llama-3.2-3B-Instruct-q4f16_1-MLC',
     });
   });
 
@@ -158,13 +159,13 @@ describe('WebGPU fallback', () => {
       inputSchema: { type: 'object', properties: {} },
       execute: () => null,
     };
-
-    await Agent.create({ scope: { mode: 'off' }, tools: [noop] });
+    const agent = await Agent.create({ scope: { mode: 'off' }, tools: [noop] });
 
     expect(createMLCEngine).toHaveBeenCalledWith(
       'Hermes-3-Llama-3.1-8B-q4f16_1-MLC',
       expect.anything(),
     );
+    expect(agent.model).toBe('Hermes-3-Llama-3.1-8B-q4f16_1-MLC');
   });
 
   it('rejects with AIFeatureUnavailableError before downloading anything when an explicit webgpu.model override does not support tools', async () => {
@@ -227,16 +228,17 @@ describe('WebGPU fallback', () => {
     ).rejects.toThrow(AIFeatureUnavailableError);
   });
 
-  it('honors a webgpu.model override when creating the agent', async () => {
+  it('honors a webgpu.model override when creating the agent, and exposes it via agent.model', async () => {
     installMockWebLLM(() =>
       createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),
     );
     const { Agent } = await import('../src/orchestrator/Agent.js');
-
-    await Agent.create({
+    const agent = await Agent.create({
       scope: { mode: 'off' },
       webgpu: { model: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC' },
     });
+
+    expect(agent.model).toBe('Qwen2.5-0.5B-Instruct-q4f16_1-MLC');
 
     const { checkAvailability } = await import('../src/availability.js');
     const defaultModelInfo = await checkAvailability('languageModel');
@@ -249,6 +251,17 @@ describe('WebGPU fallback', () => {
       state: 'downloadable',
       supported: true,
       backend: 'webgpu',
+      model: 'Llama-3.2-3B-Instruct-q4f16_1-MLC',
     });
+  });
+
+  it('agent.model is undefined when Chrome serves the request', async () => {
+    const { installMockLanguageModel } = await import('./mocks/chrome-ai.js');
+
+    installMockLanguageModel();
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const agent = await Agent.create({ scope: { mode: 'off' } });
+
+    expect(agent.model).toBeUndefined();
   });
 });

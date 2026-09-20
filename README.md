@@ -310,6 +310,7 @@ agent.setContext({ cartTotal: 42 });
 await agent.measureInputUsage('a long message…'); // preview cost before sending; undefined if unsupported
 const branch = await agent.clone(); // independent branch sharing history so far
 agent.usage; // { inputUsage, inputQuota } when the browser reports it
+agent.model; // e.g. 'Llama-3.2-3B-Instruct-q4f16_1-MLC' on the WebGPU fallback, undefined on Chrome
 agent.destroy();
 ```
 
@@ -489,16 +490,26 @@ The fallback engages automatically, in this order, the first time something need
    installed, the WebGPU fallback.
 3. Otherwise, `unsupported`/`AIFeatureNotSupportedError` — same as before this feature existed.
 
-`AvailabilityInfo` gained one additive field so you can tell which backend actually answered:
+`AvailabilityInfo` gained two additive fields so you can tell which backend — and which model —
+actually answered, and `Agent` exposes the same model id for a live session via `agent.model`:
 
 ```ts
 const availability = await ai.isAvailable();
-// { feature: 'languageModel', state: 'downloadable', supported: true, backend: 'webgpu' }
+// { feature: 'languageModel', state: 'downloadable', supported: true, backend: 'webgpu', model: 'Llama-3.2-3B-Instruct-q4f16_1-MLC' }
 
 if (availability.backend === 'webgpu') {
   // e.g. adjust copy: "on-device AI (open model)" vs Chrome's own Gemini Nano messaging.
 }
+
+const agent = await ai.createAgent();
+agent.model; // same model id, resolved for *this* agent (reflects the tools-aware default below);
+// undefined when Chrome's built-in AI served it instead -- Gemini Nano has no public model id.
 ```
+
+`isAvailable()`'s `model` doesn't know about `tools` (it's a generic check, not tied to a specific
+agent's config), so it won't reflect the heavier function-calling default described next —
+`agent.model` is the one that's always accurate for a given agent, since it's read after
+`createAgent()` already made that decision.
 
 ### Choosing a model
 

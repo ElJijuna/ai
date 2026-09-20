@@ -27,16 +27,19 @@ export class Agent {
   readonly #context: WebContext;
   readonly #unsubscribe: () => void;
   readonly #onQuotaOverflow: (() => void) | undefined;
+  readonly #model: string | undefined;
   #contextDirty = false;
 
   private constructor(
     session: LanguageModelSession,
     context: WebContext,
     onQuotaOverflow?: () => void,
+    model?: string,
   ) {
     this.#session = session;
     this.#context = context;
     this.#onQuotaOverflow = onQuotaOverflow;
+    this.#model = model;
     this.#unsubscribe = context.onChange(() => {
       this.#contextDirty = true;
     });
@@ -81,7 +84,7 @@ export class Agent {
         session.addEventListener('quotaoverflow', config.onQuotaOverflow);
       }
 
-      return new Agent(session, context, config.onQuotaOverflow);
+      return new Agent(session, context, config.onQuotaOverflow, backend.model);
     } catch (cause) {
       throw new AIFeatureUnavailableError(
         'languageModel',
@@ -93,6 +96,15 @@ export class Agent {
   /** The context currently attached to this agent. */
   get context(): Readonly<PageContext> {
     return this.#context.value;
+  }
+
+  /**
+   * The web-llm model id backing this agent, when it's running on the WebGPU fallback
+   * (e.g. `'Llama-3.2-3B-Instruct-q4f16_1-MLC'`). `undefined` on Chrome's built-in AI --
+   * Gemini Nano has no public model id to report.
+   */
+  get model(): string | undefined {
+    return this.#model;
   }
 
   /** Replaces the agent's context. Takes effect on the next `send`/`stream` call. */
@@ -159,7 +171,12 @@ export class Agent {
       clonedSession.addEventListener('quotaoverflow', this.#onQuotaOverflow);
     }
 
-    return new Agent(clonedSession, new WebContext(this.#context.value), this.#onQuotaOverflow);
+    return new Agent(
+      clonedSession,
+      new WebContext(this.#context.value),
+      this.#onQuotaOverflow,
+      this.#model,
+    );
   }
 
   /** Approximate input token usage/quota for this session, when the browser reports it. */

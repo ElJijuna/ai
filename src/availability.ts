@@ -27,7 +27,9 @@ function getFeatureApi(feature: AIFeatureName): FeatureApi | undefined {
  *
  * For `'languageModel'`, when Chrome's own API isn't present, this also checks the
  * optional WebGPU fallback (see the "WebGPU fallback" section of the README) --
- * `result.backend` says which one answered.
+ * `result.backend`/`result.model` say which one answered and which model would load.
+ * Note this call doesn't know about `tools`, so it won't reflect the heavier
+ * function-calling default `Agent.create({ tools })` would pick without an override.
  *
  * @param feature - Which built-in AI surface to check. Defaults to `'languageModel'`.
  * @param options - Feature-specific availability options, e.g. `{ sourceLanguage, targetLanguage }` for `'translator'`, or `{ model }` to check a specific WebGPU model id.
@@ -56,7 +58,7 @@ export async function checkAvailability(
     if (backend) {
       const state = (await backend.api.availability(options)) as AvailabilityInfo['state'];
 
-      return { feature, state, supported: true, backend: backend.kind };
+      return { feature, state, supported: true, backend: backend.kind, model: backend.model };
     }
   }
 

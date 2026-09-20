@@ -34,6 +34,14 @@ export interface AvailabilityInfo {
    * Omitted when `supported` is `false`.
    */
   readonly backend?: 'chrome' | 'webgpu';
+  /**
+   * The web-llm model id that would load, when `backend` is `'webgpu'` (e.g.
+   * `'Llama-3.2-3B-Instruct-q4f16_1-MLC'`). `undefined` for `'chrome'` -- Gemini Nano
+   * has no public model id -- and for `'languageModel'` calls that didn't resolve a
+   * WebGPU backend. Pass `{ model }` in `checkAvailability`'s `options` (or
+   * `AgentConfig.webgpu`/`OrchestratorConfig.webgpu`) to check/pin a specific one.
+   */
+  readonly model?: string;
 }
 
 /** How strictly an {@link Agent} should stay on-topic for the site it runs on. */

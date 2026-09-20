@@ -9,6 +9,8 @@ import {
 export interface LanguageModelBackend {
   kind: 'chrome' | 'webgpu';
   api: LanguageModelStatic;
+  /** The web-llm model id actually in use. `undefined` for `'chrome'` -- Gemini Nano has no public model id to report. */
+  model?: string;
 }
 
 /**
@@ -31,8 +33,7 @@ export async function resolveLanguageModelBackend(
     return undefined;
   }
 
-  return {
-    kind: 'webgpu',
-    api: createWebGPULanguageModelStatic(config.model ?? DEFAULT_WEBGPU_MODEL),
-  };
+  const model = config.model ?? DEFAULT_WEBGPU_MODEL;
+
+  return { kind: 'webgpu', model, api: createWebGPULanguageModelStatic(model) };
 }
