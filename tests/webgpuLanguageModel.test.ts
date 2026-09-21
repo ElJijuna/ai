@@ -257,6 +257,207 @@ describe('WebGPU fallback', () => {
     expect(create).toHaveBeenCalledTimes(2);
   });
 
+  it('flags a repeated identical tool call with a notice instead of silently re-executing', async () => {
+    // Some function-calling models (Hermes-3-8B in particular) sometimes re-issue a
+    // call they've already made instead of concluding with text -- confirmed live
+    // against real Safari/WebKit + web-llm, alternating between two registered tools
+    // for several rounds before exhausting MAX_TOOL_ROUNDS. The repeated call still
+    // gets executed (idempotent tools, no reason not to), but its result now carries a
+    // notice nudging the model to stop and answer.
+    let round = 0;
+
+    const requests: Array<Array<{ role: string; content: unknown }>> = [];
+    const create = vi.fn((request: { messages: Array<{ role: string; content: unknown }> }) => {
+      round += 1;
+      requests.push(request.messages);
+
+      if (round <= 2) {
+        return Promise.resolve({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: `call_${round}`,
+                    type: 'function',
+                    function: { name: 'getTime', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
+        });
+      }
+
+      return Promise.resolve({ choices: [{ message: { content: 'Final answer.' } }] });
+    });
+
+    installMockWebLLM(() => ({ chat: { completions: { create } } }));
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const getTime: Tool = {
+      name: 'getTime',
+      description: 'Returns the current time.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: vi.fn(() => ({ time: 'noon' })),
+    };
+    const agent = await Agent.create({ scope: { mode: 'off' }, tools: [getTime] });
+
+    await expect(agent.send('what time is it?')).resolves.toBe('Final answer.');
+    expect(getTime.execute).toHaveBeenCalledTimes(2);
+
+    const toolMessages = requests[2].filter((message) => message.role === 'tool');
+
+    expect(toolMessages).toHaveLength(2);
+    expect(JSON.parse(toolMessages[0].content as string)).toEqual({ time: 'noon' });
+
+    const repeatContent = JSON.parse(toolMessages[1].content as string) as {
+      result: unknown;
+      notice: string;
+    };
+
+    expect(repeatContent.result).toEqual({ time: 'noon' });
+    expect(repeatContent.notice).toMatch(/already called this tool/i);
+  });
+
+  it('throws AIFeatureUnavailableError after exhausting the tool-call round limit', async () => {
+    const create = vi.fn(() =>
+      Promise.resolve({
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                { id: 'call', type: 'function', function: { name: 'noop', arguments: '{}' } },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+
+    installMockWebLLM(() => ({ chat: { completions: { create } } }));
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const { AIFeatureUnavailableError } = await import('../src/errors.js');
+    const noop: Tool = {
+      name: 'noop',
+      description: 'Does nothing.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => null,
+    };
+    const agent = await Agent.create({ scope: { mode: 'off' }, tools: [noop] });
+
+    await expect(agent.send('hi')).rejects.toThrow(AIFeatureUnavailableError);
+    expect(create).toHaveBeenCalledTimes(6);
+  });
+
+  it('drops `tools` on the final round so a model stuck repeating calls is forced to answer in text', async () => {
+    // Confirmed live against real Safari/WebKit + web-llm: Hermes-3-8B repeated the
+    // exact same call every round and never stopped on its own, even with the repeat
+    // notice above -- exhausting MAX_TOOL_ROUNDS every time. The final round removes
+    // `tools` from the request entirely; with no schema to call from, the mock (like
+    // the real model) falls back to a plain-text answer instead of another tool call.
+    let round = 0;
+    const requests: Array<{ tools?: unknown }> = [];
+
+    const create = vi.fn((request: { tools?: unknown }) => {
+      round += 1;
+      requests.push(request);
+
+      if (request.tools) {
+        return Promise.resolve({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: `call_${round}`,
+                    type: 'function',
+                    function: { name: 'getTime', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
+        });
+      }
+
+      return Promise.resolve({
+        choices: [{ message: { content: 'It is noon, based on what I already know.' } }],
+      });
+    });
+
+    installMockWebLLM(() => ({ chat: { completions: { create } } }));
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const getTime: Tool = {
+      name: 'getTime',
+      description: 'Returns the current time.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: vi.fn(() => ({ time: 'noon' })),
+    };
+    const agent = await Agent.create({ scope: { mode: 'off' }, tools: [getTime] });
+
+    await expect(agent.send('what time is it?')).resolves.toBe(
+      'It is noon, based on what I already know.',
+    );
+    expect(create).toHaveBeenCalledTimes(6);
+    expect(requests[0].tools).toBeDefined();
+    expect(requests[5].tools).toBeUndefined();
+  });
+
+  it('applies the same final-round fallback to stream()', async () => {
+    let round = 0;
+
+    const create = vi.fn((request: { tools?: unknown; stream?: boolean }) => {
+      round += 1;
+
+      if (request.tools) {
+        return Promise.resolve(
+          chunkStream([
+            {
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: `call_${round}`,
+                        function: { name: 'getTime', arguments: '{}' },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ]),
+        );
+      }
+
+      return Promise.resolve(
+        chunkStream([{ choices: [{ delta: { content: 'It is noon.' } }] }]),
+      );
+    });
+
+    installMockWebLLM(() => ({ chat: { completions: { create } } }));
+    const { Agent } = await import('../src/orchestrator/Agent.js');
+    const getTime: Tool = {
+      name: 'getTime',
+      description: 'Returns the current time.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: vi.fn(() => ({ time: 'noon' })),
+    };
+    const agent = await Agent.create({ scope: { mode: 'off' }, tools: [getTime] });
+    const chunks: string[] = [];
+
+    for await (const chunk of agent.stream('what time is it?')) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual(['It is noon.']);
+    expect(create).toHaveBeenCalledTimes(6);
+  });
+
   it('auto-selects a function-calling-capable model when tools are registered without an explicit override', async () => {
     const createMLCEngine = installMockWebLLM(() =>
       createMockEngine(() => ({ choices: [{ message: { content: 'ok' } }] })),

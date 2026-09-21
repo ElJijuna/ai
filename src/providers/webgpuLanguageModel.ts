@@ -106,8 +106,15 @@ export const DEFAULT_WEBGPU_MODEL = 'Llama-3.2-3B-Instruct-q4f16_1-MLC';
  */
 export const DEFAULT_WEBGPU_TOOL_MODEL = 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC';
 
-/** Bounds the client-side tool-call loop (web-llm has no built-in equivalent to Chrome's in-browser tool execution). */
-const MAX_TOOL_ROUNDS = 4;
+/**
+ * Bounds the client-side tool-call loop (web-llm has no built-in equivalent to Chrome's
+ * in-browser tool execution). Some function-calling models (Hermes-3-8B in particular)
+ * occasionally re-issue a call they've already made instead of concluding with text --
+ * {@link REPEAT_TOOL_CALL_NOTICE} nudges them to stop once that's detected, but the
+ * model still needs a spare round afterward to act on it, hence the extra headroom
+ * over a "one call per tool" minimum.
+ */
+const MAX_TOOL_ROUNDS = 6;
 
 export function isWebGPUSupported(): boolean {
   return typeof navigator !== 'undefined' && (navigator as { gpu?: unknown }).gpu !== undefined;
@@ -294,6 +301,47 @@ async function executeTool(
   }
 }
 
+/** Appended to a tool result's content the second time the same call (name + arguments) shows up in one conversation, to break the retry loop described on {@link MAX_TOOL_ROUNDS}. */
+const REPEAT_TOOL_CALL_NOTICE =
+  'You already called this tool with these exact arguments earlier in this conversation -- ' +
+  'calling it again will return the same result. Stop calling tools and answer the user now ' +
+  'using the information already returned.';
+
+/**
+ * Runs every tool call from one round and returns the `tool` messages to append. `seenCalls`
+ * is shared across all rounds of a single prompt/stream so a call repeated in a later round
+ * (same tool name + same JSON arguments string) gets flagged with
+ * {@link REPEAT_TOOL_CALL_NOTICE} instead of silently executing again.
+ */
+async function executeToolCalls(
+  toolsByName: Map<string, LanguageModelTool>,
+  toolCalls: WebLLMToolCall[],
+  seenCalls: Set<string>,
+): Promise<WebLLMMessage[]> {
+  const messages: WebLLMMessage[] = [];
+
+  for (const call of toolCalls) {
+    const key = `${call.function.name}:${call.function.arguments}`;
+    const isRepeat = seenCalls.has(key);
+
+    seenCalls.add(key);
+
+    const result = await executeTool(toolsByName, call.function);
+    const content = isRepeat ? { result, notice: REPEAT_TOOL_CALL_NOTICE } : result;
+
+    console.debug(
+      '[webgpu-debug]',
+      isRepeat ? 'REPEAT' : 'new',
+      call.function.name,
+      call.function.arguments,
+    );
+
+    messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(content) });
+  }
+
+  return messages;
+}
+
 interface RoundOptions {
   temperature?: number;
   tools?: LanguageModelTool[];
@@ -332,12 +380,21 @@ async function runToolLoop(
 ): Promise<{ reply: string; history: WebLLMMessage[] }> {
   const toolsByName = new Map((options.tools ?? []).map((tool) => [tool.name, tool]));
   const chatTools = options.tools?.length ? options.tools.map(toWebLLMTool) : undefined;
+  const seenCalls = new Set<string>();
 
   let conversation = [...history, ...turn];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     throwIfAborted(options.signal);
 
+    // Some function-calling models keep re-issuing calls instead of ever concluding
+    // with text (confirmed live: Hermes-3-8B repeating the exact same call 5 rounds
+    // straight, ignoring the repeat notice below). Rather than let that hit
+    // MAX_TOOL_ROUNDS and throw, the final round drops `tools` entirely -- with no
+    // schema to call from, the model is left with only the conversation so far
+    // (which already has every tool result it asked for) and must answer in text.
+    const isFinalRound = round === MAX_TOOL_ROUNDS - 1;
+    const roundTools = isFinalRound ? undefined : chatTools;
     const completion = await engine.chat.completions.create({
       // web-llm's hardcoded Hermes function-calling support mutates the `messages`
       // array it's given (it `unshift()`s its own tool-definition system message onto
@@ -346,7 +403,7 @@ async function runToolLoop(
       // and trigger `CustomSystemPromptError` on round 2+.
       messages: [...conversation],
       temperature: options.temperature,
-      tools: chatTools,
+      tools: roundTools,
       response_format: buildResponseFormat(options.responseConstraint, Boolean(chatTools)),
       stream: false,
     });
@@ -368,14 +425,10 @@ async function runToolLoop(
       { role: 'assistant', content: message.content ?? '', tool_calls: toolCalls },
     ];
 
-    for (const call of toolCalls) {
-      const result = await executeTool(toolsByName, call.function);
-
-      conversation = [
-        ...conversation,
-        { role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) },
-      ];
-    }
+    conversation = [
+      ...conversation,
+      ...(await executeToolCalls(toolsByName, toolCalls, seenCalls)),
+    ];
   }
 
   throw new AIFeatureUnavailableError(
@@ -399,19 +452,24 @@ async function* streamToolLoop(
 ): AsyncGenerator<string, WebLLMMessage[]> {
   const toolsByName = new Map((options.tools ?? []).map((tool) => [tool.name, tool]));
   const chatTools = options.tools?.length ? options.tools.map(toWebLLMTool) : undefined;
+  const seenCalls = new Set<string>();
 
   let conversation = [...history, ...turn];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     throwIfAborted(options.signal);
 
+    // See the matching comment in runToolLoop: the final round drops `tools` so a
+    // model stuck re-issuing calls is forced to answer in text from what it already has.
+    const isFinalRound = round === MAX_TOOL_ROUNDS - 1;
+    const roundTools = isFinalRound ? undefined : chatTools;
     const stream = await engine.chat.completions.create({
       // See the matching comment in runToolLoop: web-llm mutates the `messages` array
       // in place, so a shallow copy stops that from poisoning `conversation` for later
       // rounds.
       messages: [...conversation],
       temperature: options.temperature,
-      tools: chatTools,
+      tools: roundTools,
       response_format: buildResponseFormat(options.responseConstraint, Boolean(chatTools)),
       stream: true,
     });
@@ -464,14 +522,10 @@ async function* streamToolLoop(
       { role: 'assistant', content, tool_calls: toolCalls },
     ];
 
-    for (const call of toolCalls) {
-      const result = await executeTool(toolsByName, call.function);
-
-      conversation = [
-        ...conversation,
-        { role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) },
-      ];
-    }
+    conversation = [
+      ...conversation,
+      ...(await executeToolCalls(toolsByName, toolCalls, seenCalls)),
+    ];
   }
 
   throw new AIFeatureUnavailableError(

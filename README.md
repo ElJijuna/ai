@@ -555,6 +555,13 @@ need, given these are multi-GB downloads.
   reply as one chunk once it's ready, instead of token-by-token — a tool-call round can't be safely
   streamed live, since its partial text may just be function-call syntax rather than a user-facing
   reply.
+- **A conversation that never stops calling tools throws after 6 rounds.** Small open models
+  occasionally re-issue a call they've already made instead of concluding with text — a repeated
+  call (same tool + same arguments) still runs, but its result gets a notice nudging the model to
+  stop and answer instead of looping. If the model ignores that too, `send()`/`stream()` rejects
+  with `AIFeatureUnavailableError('languageModel', 'exceeded the maximum number of tool-call
+  rounds')` rather than hanging indefinitely — this is model non-convergence, not a bug to retry
+  around; simplifying the tool set or the prompt is more effective than resending the same request.
 - **The site-scope guard/instructions/context arrive as a user/assistant preamble, not a system
   message, once tools are registered.** Every model web-llm currently allows `tools` on hardcodes
   its own tool-definition system prompt and throws if your conversation already has one — so this
