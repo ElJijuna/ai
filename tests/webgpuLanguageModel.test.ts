@@ -358,8 +358,8 @@ describe('WebGPU fallback', () => {
     // `tools` from the request entirely; with no schema to call from, the mock (like
     // the real model) falls back to a plain-text answer instead of another tool call.
     let round = 0;
-    const requests: Array<{ tools?: unknown }> = [];
 
+    const requests: Array<{ tools?: unknown }> = [];
     const create = vi.fn((request: { tools?: unknown }) => {
       round += 1;
       requests.push(request);
@@ -434,9 +434,7 @@ describe('WebGPU fallback', () => {
         );
       }
 
-      return Promise.resolve(
-        chunkStream([{ choices: [{ delta: { content: 'It is noon.' } }] }]),
-      );
+      return Promise.resolve(chunkStream([{ choices: [{ delta: { content: 'It is noon.' } }] }]));
     });
 
     installMockWebLLM(() => ({ chat: { completions: { create } } }));

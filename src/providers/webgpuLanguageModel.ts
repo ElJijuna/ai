@@ -329,13 +329,6 @@ async function executeToolCalls(
     const result = await executeTool(toolsByName, call.function);
     const content = isRepeat ? { result, notice: REPEAT_TOOL_CALL_NOTICE } : result;
 
-    console.debug(
-      '[webgpu-debug]',
-      isRepeat ? 'REPEAT' : 'new',
-      call.function.name,
-      call.function.arguments,
-    );
-
     messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(content) });
   }
 
