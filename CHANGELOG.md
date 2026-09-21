@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/ElJijuna/ai/compare/v0.5.0...v0.6.0) (2026-09-21)
+
+
+### Features
+
+* enhance tool-call handling to prevent infinite loops and provide user notices for repeated calls ([aa971fb](https://github.com/ElJijuna/ai/commit/aa971fb3d21456b62a9a05f96ffd242e0325e3f2))
+
 # [0.5.0](https://github.com/ElJijuna/ai/compare/v0.4.0...v0.5.0) (2026-09-20)
 
 
